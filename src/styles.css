@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  background-color: #ffffff;
+  color: #1f2328;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* 自定义滚动条 (浅色) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d0d7de;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b6bec8;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Markdown 渲染基础样式 (浅色) */
+.md p {
+  margin: 0.4em 0;
+  line-height: 1.7;
+}
+.md pre {
+  background: #f6f8fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.md code {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.85em;
+}
+.md :not(pre) > code {
+  background: #eef1f4;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #24292f;
+}
+.md ul,
+.md ol {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+.md h1,
+.md h2,
+.md h3 {
+  margin: 0.6em 0 0.3em;
+  font-weight: 600;
+}
+.md table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+}
+.md th,
+.md td {
+  border: 1px solid #e5e7eb;
+  padding: 4px 10px;
+}
+.md a {
+  color: #10a37f;
+}
+
+/* 淡入动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fadeIn 0.25s ease;
+}
+
+/* 进入新对话时欢迎语抖动入场 */
+@keyframes greetingShake {
+  0% {
+    opacity: 0;
+    transform: translateX(0) rotate(0deg);
+  }
+  15% {
+    opacity: 1;
+    transform: translateX(-7px) rotate(-1.6deg);
+  }
+  30% {
+    transform: translateX(6px) rotate(1.3deg);
+  }
+  45% {
+    transform: translateX(-4px) rotate(-0.9deg);
+  }
+  60% {
+    transform: translateX(3px) rotate(0.6deg);
+  }
+  75% {
+    transform: translateX(-2px) rotate(-0.3deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) rotate(0deg);
+  }
+}
+.greeting-shake {
+  animation: greetingShake 0.7s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  transform-origin: left center;
+}

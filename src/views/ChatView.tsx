@@ -1,0 +1,889 @@
+import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { open } from "@tauri-apps/plugin-dialog";
+import {
+  api,
+  Message,
+  TodoItem,
+  ModelProfileDto,
+  ThinkingLevel,
+  THINKING_LABELS,
+  CONTEXT_TIERS,
+  formatContext,
+  SkillMeta,
+} from "../lib/api";
+import { useTauriEvent, EV } from "../lib/events";
+
+interface ToolCall {
+  id: string;
+  name: string;
+  input: any;
+  ok?: boolean;
+  output?: string;
+}
+interface UiMsg {
+  role: "user" | "assistant";
+  text: string;
+  tools?: ToolCall[];
+  streaming?: boolean;
+  attachments?: string[];
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 6) return "凌晨好";
+  if (h < 12) return "上午好";
+  if (h < 14) return "中午好";
+  if (h < 18) return "下午好";
+  return "晚上好";
+}
+
+// 定时任务常用频率预设 (五段式 cron)
+const CRON_PRESETS: { label: string; cron: string }[] = [
+  { label: "每小时", cron: "0 * * * *" },
+  { label: "每天 09:00", cron: "0 9 * * *" },
+  { label: "每周一 09:00", cron: "0 9 * * 1" },
+  { label: "每月 1 号 09:00", cron: "0 9 1 * *" },
+];
+
+export default function ChatView({
+  sessionId,
+  onAddModel,
+  onManageModels,
+  modelsRefreshKey,
+  onContentChange,
+  onNotice,
+  draft,
+}: {
+  sessionId: string;
+  onAddModel: () => void;
+  onManageModels: () => void;
+  modelsRefreshKey: number;
+  onContentChange?: (hasContent: boolean) => void;
+  onNotice?: (level: string, text: string) => void;
+  draft?: { text: string; key: number } | null;
+}) {
+  const [messages, setMessages] = useState<UiMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [running, setRunning] = useState(false);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [models, setModels] = useState<ModelProfileDto[]>([]);
+  const [skills, setSkills] = useState<SkillMeta[]>([]);
+  const [workspace, setWorkspace] = useState<string>("");
+  const [attachments, setAttachments] = useState<string[]>([]);
+  // 消息队列: 当前任务运行时发送会排队，结束后自动发下一条
+  const [queue, setQueue] = useState<{ text: string; attachments: string[] }[]>([]);
+  const queueRef = useRef<{ text: string; attachments: string[] }[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const streamingText = useRef("");
+  // 每个会话独立保存输入草稿 (切换会话时不串提)
+  const draftsRef = useRef<Record<string, string>>({});
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const prevSessionRef = useRef(sessionId);
+
+  const active = models.find((m) => m.active);
+  const hasMessages = messages.length > 0;
+
+  const setQueueBoth = (updater: (q: { text: string; attachments: string[] }[]) => { text: string; attachments: string[] }[]) => {
+    queueRef.current = updater(queueRef.current);
+    setQueue([...queueRef.current]);
+  };
+
+  // 向 App 报告当前会话是否有内容 (用于“空对话不重复新建”)
+  useEffect(() => {
+    onContentChange?.(messages.length > 0);
+  }, [messages.length, onContentChange]);
+
+  const refreshModels = () => api.listModels().then(setModels);
+
+  // 外部注入草稿 (如技能页「通过助手创建」) -> 填入输入框
+  useEffect(() => {
+    if (draft) setInput(draft.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.key]);
+
+  useEffect(() => {
+    refreshModels();
+    api.getWorkspace().then((w) => setWorkspace(w.workspace));
+    api.listSkills().then(setSkills);
+  }, [modelsRefreshKey]);
+
+  useEffect(() => {
+    // 每个会话独立的输入草稿: 切走时存旧会话、切入时载入新会话 (没有则空)
+    if (prevSessionRef.current !== sessionId) {
+      draftsRef.current[prevSessionRef.current] = inputRef.current;
+    }
+    setInput(draftsRef.current[sessionId] ?? "");
+    prevSessionRef.current = sessionId;
+    setMessages([]);
+    streamingText.current = "";
+    setRunning(false);
+    setQueueBoth(() => []);
+    api.loadMessages(sessionId).then((raw: Message[]) => {
+      const ui: UiMsg[] = [];
+      for (const m of raw) {
+        const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+        const tools: ToolCall[] = m.content
+          .filter((b) => b.type === "tool_use")
+          .map((b) => ({ id: b.id!, name: b.name!, input: b.input }));
+        const results = m.content.filter((b) => b.type === "tool_result");
+        if (results.length && ui.length) {
+          const last = ui[ui.length - 1];
+          if (last.tools)
+            for (const r of results) {
+              const tc = last.tools.find((t) => t.id === r.tool_use_id);
+              if (tc) { tc.output = r.content; tc.ok = !r.is_error; }
+            }
+        }
+        if (text || tools.length) ui.push({ role: m.role, text, tools: tools.length ? tools : undefined });
+      }
+      setMessages(ui);
+    });
+    api.getTodos(sessionId).then(setTodos);
+  }, [sessionId]);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  useTauriEvent<{ session_id: string; text: string }>(EV.DELTA, (p) => {
+    if (p.session_id !== sessionId) return;
+    streamingText.current += p.text;
+    setMessages((prev) => {
+      const copy = [...prev];
+      const last = copy[copy.length - 1];
+      if (last && last.role === "assistant" && last.streaming) last.text = streamingText.current;
+      else copy.push({ role: "assistant", text: streamingText.current, streaming: true });
+      return copy;
+    });
+  });
+  useTauriEvent<{ session_id: string; id: string; name: string; input: any }>(EV.TOOL_START, (p) => {
+    if (p.session_id !== sessionId) return;
+    streamingText.current = "";
+    setMessages((prev) => {
+      const copy = [...prev];
+      let last = copy[copy.length - 1];
+      if (!last || last.role !== "assistant" || !last.streaming) {
+        last = { role: "assistant", text: "", tools: [], streaming: true };
+        copy.push(last);
+      }
+      if (!last.tools) last.tools = [];
+      last.tools.push({ id: p.id, name: p.name, input: p.input });
+      return copy;
+    });
+  });
+  useTauriEvent<{ session_id: string; id: string; ok: boolean; output: string }>(EV.TOOL_RESULT, (p) => {
+    if (p.session_id !== sessionId) return;
+    setMessages((prev) => {
+      const copy = [...prev];
+      for (let i = copy.length - 1; i >= 0; i--) {
+        const tc = copy[i].tools?.find((t) => t.id === p.id);
+        if (tc) { tc.ok = p.ok; tc.output = p.output; break; }
+      }
+      return copy;
+    });
+  });
+  useTauriEvent<{ session_id: string; text: string }>(EV.ASSISTANT_MSG, (p) => {
+    if (p.session_id !== sessionId) return;
+    streamingText.current = "";
+    setMessages((prev) => {
+      const copy = [...prev];
+      const last = copy[copy.length - 1];
+      if (last && last.role === "assistant") {
+        // 只要最后一条是助手气泡就定稿 (不论是否还在流式)，
+        // 避免因事件到达顺序或重复投递而重复推送
+        copy[copy.length - 1] = {
+          ...last,
+          streaming: false,
+          text: p.text || last.text,
+        };
+      } else if (p.text && p.text.trim()) {
+        // 最后一条不是助手气泡 (例如错误消息、无流式回复) —— 新增一条
+        copy.push({ role: "assistant", text: p.text, streaming: false });
+      }
+      return copy;
+    });
+  });
+  useTauriEvent<{ session_id: string; state: string }>(EV.TURN_STATE, (p) => {
+    if (p.session_id !== sessionId) return;
+    if (p.state === "running") {
+      setRunning(true);
+      return;
+    }
+    // idle: 定稿流式气泡，然后自动发送队列中的下一条
+    setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)));
+    if (queueRef.current.length > 0) {
+      const next = queueRef.current[0];
+      setQueueBoth((q) => q.slice(1));
+      void sendComposed(next.text, next.attachments);
+    } else {
+      setRunning(false);
+    }
+  });
+  useTauriEvent<{ session_id: string; todos: TodoItem[] }>(EV.TODO_UPDATE, (p) => {
+    if (p.session_id === sessionId) setTodos(p.todos);
+  });
+
+  // 实际发送一条消息 (不判断队列)
+  const sendComposed = async (text: string, atts: string[]) => {
+    setMessages((prev) => [...prev, { role: "user", text, attachments: atts }]);
+    streamingText.current = "";
+    setRunning(true);
+    await api.sendMessage(sessionId, text, atts.length ? atts : undefined);
+  };
+
+  // 用户点发送/回车: 运行中则入队，否则立即发送
+  const send = () => {
+    const content = input.trim();
+    if (!content && attachments.length === 0) return;
+    const atts = attachments;
+    setInput("");
+    setAttachments([]);
+    if (running) {
+      setQueueBoth((q) => [...q, { text: content, attachments: atts }]);
+    } else {
+      void sendComposed(content, atts);
+    }
+  };
+
+  const pickFiles = async () => {
+    const sel = await open({ multiple: true });
+    if (!sel) return;
+    const arr = Array.isArray(sel) ? sel : [sel];
+    setAttachments((prev) => [...prev, ...arr.filter((a) => !prev.includes(a))]);
+  };
+
+  // 选择技能: 向输入框插入一个使用该技能的提示
+  const pickSkill = (name: string) => {
+    setInput((v) => (v.trim() ? `${v.trimEnd()} ` : "") + `使用技能「${name}」`);
+  };
+
+  // 选择定时频率: 以当前输入为执行内容创建定时任务
+  const createCron = async (cron: string, label: string) => {
+    const promptText = input.trim();
+    if (!promptText) {
+      onNotice?.("warn", "请先在输入框描述要定时执行的内容");
+      return;
+    }
+    try {
+      await api.createCronJob(sessionId, "", cron, promptText, true);
+      setInput("");
+      onNotice?.("info", `已创建定时任务（${label}）`);
+    } catch (e: any) {
+      onNotice?.("error", "创建定时任务失败：" + (e?.toString() ?? ""));
+    }
+  };
+
+  const composer = (
+    <Composer
+      input={input}
+      setInput={setInput}
+      onSend={send}
+      onCancel={() => api.cancelTurn(sessionId)}
+      running={running}
+      models={models}
+      active={active}
+      skills={skills}
+      attachments={attachments}
+      queue={queue}
+      onRemoveQueue={(i) => setQueueBoth((q) => q.filter((_, idx) => idx !== i))}
+      onAttach={pickFiles}
+      onPickSkill={pickSkill}
+      onCreateCron={createCron}
+      onRemoveAttach={(p) => setAttachments((prev) => prev.filter((x) => x !== p))}
+      onSwitch={async (id) => { await api.setActiveModel(id); refreshModels(); }}
+      onRuntime={async (modelId, cw, th) => { await api.setModelRuntime(modelId, cw, th); refreshModels(); }}
+      onAddModel={onAddModel}
+      onManageModels={onManageModels}
+      workspace={workspace}
+      onPickWorkspace={async () => {
+        const dir = await open({ directory: true, multiple: false });
+        if (typeof dir === "string") { await api.setWorkspace(dir); setWorkspace(dir); }
+      }}
+    />
+  );
+
+  return (
+    <div className="h-full flex">
+      <div className="flex-1 flex flex-col min-w-0">
+        {hasMessages ? (
+          <>
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="max-w-3xl mx-auto space-y-5">
+                {messages.map((m, i) => (
+                  <MessageBubble key={i} msg={m} />
+                ))}
+              </div>
+            </div>
+            <div className="px-6 pb-5">
+              <div className="max-w-3xl mx-auto">{composer}</div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center px-6">
+            <div className="w-full max-w-2xl">
+              <div className="flex flex-col items-start mb-6">
+                <h1
+                  key={sessionId}
+                  className="greeting-shake text-[26px] font-bold text-slate-800 leading-tight text-left"
+                >
+                  {greeting()}
+                  <br />
+                  有什么需要我帮你搞定的？
+                </h1>
+              </div>
+              {composer}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {todos.length > 0 && (
+        <aside className="w-64 shrink-0 border-l border-slate-200 p-4 overflow-y-auto bg-[#fafbfc]">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase mb-3">任务进度</h3>
+          <div className="space-y-2">
+            {todos.map((t, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <span className="mt-0.5">
+                  {t.status === "completed" ? "✅" : t.status === "in_progress" ? "🔄" : "⬜"}
+                </span>
+                <span
+                  className={
+                    t.status === "completed"
+                      ? "text-slate-400 line-through"
+                      : t.status === "in_progress"
+                      ? "text-[#10a37f]"
+                      : "text-slate-600"
+                  }
+                >
+                  {t.content}
+                </span>
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Composer (输入卡片 + 工具栏) ---------------- */
+
+function Composer(props: {
+  input: string;
+  setInput: (s: string) => void;
+  onSend: () => void;
+  onCancel: () => void;
+  running: boolean;
+  models: ModelProfileDto[];
+  active?: ModelProfileDto;
+  skills: SkillMeta[];
+  attachments: string[];
+  queue: { text: string; attachments: string[] }[];
+  onRemoveQueue: (i: number) => void;
+  onAttach: () => void;
+  onPickSkill: (name: string) => void;
+  onCreateCron: (cron: string, label: string) => void;
+  onRemoveAttach: (p: string) => void;
+  onSwitch: (id: string) => void;
+  onRuntime: (modelId: string, cw?: number, th?: ThinkingLevel) => void;
+  onAddModel: () => void;
+  onManageModels: () => void;
+  workspace: string;
+  onPickWorkspace: () => void;
+}) {
+  const [showModels, setShowModels] = useState(false);
+  const [editModelId, setEditModelId] = useState<string | null>(null);
+  const [showPlus, setShowPlus] = useState(false);
+  const [plusSub, setPlusSub] = useState<null | "skills" | "cron">(null);
+  const closePlus = () => { setShowPlus(false); setPlusSub(null); };
+  const editModel = editModelId ? props.models.find((m) => m.id === editModelId) : undefined;
+  const wsName = props.workspace ? props.workspace.split(/[\\/]/).pop() : "选择工作目录";
+
+  // 输入框随内容自动增高，最多 7 行，超出则内部滚动
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const snapTimer = useRef<number | null>(null);
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const cs = getComputedStyle(ta);
+    const lh = parseFloat(cs.lineHeight) || 24;
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const maxH = lh * 7 + pad;
+    ta.style.height = Math.min(ta.scrollHeight, maxH) + "px";
+    ta.style.overflowY = ta.scrollHeight > maxH + 1 ? "auto" : "hidden";
+  }, [props.input]);
+
+  return (
+    <div>
+      {/* 消息队列 (显示在输入框上方，上一任务结束后自动发送) */}
+      {props.queue.length > 0 && (
+        <div className="mb-2 space-y-1.5">
+          <div className="text-[11px] text-slate-400 px-1">
+            队列中·{props.queue.length} 条，将在当前任务结束后自动发送
+          </div>
+          {props.queue.map((q, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 bg-[#f2fbf7] border border-[#cdeede] rounded-lg px-3 py-1.5 text-sm text-slate-600"
+            >
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#10a37f]" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M12 8v4l3 2" />
+                <path d="M12 3a9 9 0 100 18 9 9 0 000-18z" />
+              </svg>
+              <span className="truncate flex-1">
+                {q.text || "(仅附件)"}
+                {q.attachments.length > 0 && (
+                  <span className="text-[11px] text-slate-400 ml-1">📎{q.attachments.length}</span>
+                )}
+              </span>
+              <button
+                onClick={() => props.onRemoveQueue(i)}
+                className="text-slate-400 hover:text-red-500 shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+    <div className="border border-slate-200 rounded-t-2xl shadow-[0_2px_16px_rgba(0,0,0,0.05)] bg-white">
+      {/* 附件 chips */}
+      {props.attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-3 pt-3">
+          {props.attachments.map((p) => (
+            <span
+              key={p}
+              className="flex items-center gap-1.5 max-w-[220px] bg-slate-100 border border-slate-200 rounded-lg pl-2 pr-1.5 py-1 text-xs text-slate-600"
+              title={p}
+            >
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                <path d="M14 2v6h6" />
+              </svg>
+              <span className="truncate">{p.split(/[\\/]/).pop()}</span>
+              <button
+                onClick={() => props.onRemoveAttach(p)}
+                className="text-slate-400 hover:text-red-500 shrink-0"
+              >
+                ✕
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="px-4 pt-3.5 pb-2">
+        <textarea
+          ref={taRef}
+          value={props.input}
+          onChange={(e) => props.setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); props.onSend(); }
+          }}
+          onScroll={(e) => {
+            // 自然滚动；停下后 (防抖) 再平滑吸附到最近整行，避免切半行
+            const ta = e.currentTarget;
+            if (snapTimer.current) window.clearTimeout(snapTimer.current);
+            snapTimer.current = window.setTimeout(() => {
+              const lh = 24;
+              const snapped = Math.round(ta.scrollTop / lh) * lh;
+              if (Math.abs(snapped - ta.scrollTop) > 1) {
+                ta.style.scrollBehavior = "smooth";
+                ta.scrollTop = snapped;
+                window.setTimeout(() => { ta.style.scrollBehavior = "auto"; }, 220);
+              }
+            }, 140);
+          }}
+          placeholder="描述任务，输入 / 调用技能…"
+          rows={1}
+          className="block w-full resize-none bg-transparent text-[15px] leading-6 text-slate-800 placeholder:text-slate-400 focus:outline-none"
+        />
+      </div>
+
+      <div className="flex items-center gap-1.5 px-3 pb-2.5 relative">
+        {/* “+” 添加上下文菜单 */}
+        <div className="relative shrink-0">
+          <button
+            onClick={() => { setShowPlus(!showPlus); setPlusSub(null); setShowModels(false); }}
+            className="w-8 h-8 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-100 flex items-center justify-center"
+            title="添加上下文"
+          >
+            <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+          {showPlus && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={closePlus} />
+              <div className="absolute bottom-full mb-2 left-0 w-52 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-40 fade-in">
+                {/* 添加文件 */}
+                <button
+                  onClick={() => { props.onAttach(); closePlus(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 text-left"
+                >
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.44 11.05l-9.19 9.19a5.5 5.5 0 01-7.78-7.78l9.19-9.19a3.5 3.5 0 014.95 4.95l-9.2 9.19a1.5 1.5 0 01-2.12-2.12l8.49-8.49" />
+                  </svg>
+                  添加文件
+                </button>
+
+                {/* 技能 (子菜单) */}
+                <div className="relative">
+                  <button
+                    onClick={() => setPlusSub(plusSub === "skills" ? null : "skills")}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${plusSub === "skills" ? "bg-slate-50 text-slate-800" : "text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 21l-4.9 2.6.9-5.5-4-3.9 5.5-.8z" />
+                    </svg>
+                    <span className="flex-1">技能</span>
+                    <span className="text-slate-300">›</span>
+                  </button>
+                  {plusSub === "skills" && (
+                    <div className="absolute left-full ml-1 bottom-0 w-52 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 max-h-64 overflow-y-auto">
+                      {props.skills.length === 0 ? (
+                        <div className="px-3 py-2 text-xs text-slate-400">暂无启用的技能</div>
+                      ) : (
+                        props.skills.map((s) => (
+                          <button
+                            key={s.name}
+                            onClick={() => { props.onPickSkill(s.name); closePlus(); }}
+                            className="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 truncate"
+                            title={s.description}
+                          >
+                            {s.name}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="my-1 border-t border-slate-100" />
+
+                {/* 定时任务 (子菜单) */}
+                <div className="relative">
+                  <button
+                    onClick={() => setPlusSub(plusSub === "cron" ? null : "cron")}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${plusSub === "cron" ? "bg-slate-50 text-slate-800" : "text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 8v4l3 2" />
+                      <path d="M12 3a9 9 0 100 18 9 9 0 000-18z" />
+                    </svg>
+                    <span className="flex-1">定时任务</span>
+                    <span className="text-slate-300">›</span>
+                  </button>
+                  {plusSub === "cron" && (
+                    <div className="absolute left-full ml-1 bottom-0 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5">
+                      {CRON_PRESETS.map((c) => (
+                        <button
+                          key={c.cron}
+                          onClick={() => { props.onCreateCron(c.cron, c.label); closePlus(); }}
+                          className="w-full text-left px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* 模型切换 + 编辑配置 (发送键左侧) */}
+        <div className="relative shrink-0">
+          <button
+            onClick={() => { setShowModels((v) => !v); setEditModelId(null); setShowPlus(false); setPlusSub(null); }}
+            className="flex items-center gap-1.5 text-sm text-slate-700 hover:bg-slate-100 rounded-full px-3 py-1.5"
+          >
+            {props.active ? props.active.name : "未选择模型"}
+            <Chevron />
+          </button>
+          {showModels && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => { setShowModels(false); setEditModelId(null); }} />
+              <div className="absolute bottom-full mb-2 right-0 w-60 bg-white border border-slate-200 rounded-xl shadow-lg z-20 fade-in">
+                {/* 左: 模型列表 (行右侧“编辑”打开配置) */}
+                <div className="py-1.5 max-h-80 overflow-y-auto">
+                  <div className="px-3 py-1 text-[11px] text-slate-400">切换模型</div>
+                  {props.models.length === 0 && (
+                    <div className="px-3 py-2 text-sm text-slate-400">暂无模型</div>
+                  )}
+                  {props.models.map((m) => (
+                    <div
+                      key={m.id}
+                      className={`group flex items-center justify-between pl-3 pr-2 py-2 text-sm hover:bg-slate-50 ${editModelId === m.id ? "bg-slate-50" : ""}`}
+                    >
+                      <button onClick={() => props.onSwitch(m.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+                        {m.active ? (
+                          <span className="text-[#10a37f] text-xs w-3 shrink-0">✓</span>
+                        ) : (
+                          <span className="w-3 shrink-0" />
+                        )}
+                        <span className="truncate text-slate-700">{m.name}</span>
+                        {!m.has_key && <span className="text-[10px] text-amber-600 shrink-0">无密钥</span>}
+                      </button>
+                      <button
+                        onClick={() => setEditModelId(editModelId === m.id ? null : m.id)}
+                        className={`ml-2 shrink-0 flex items-center gap-1 text-xs hover:text-[#10a37f] ${editModelId === m.id ? "text-[#10a37f]" : "text-slate-400"}`}
+                        title="配置上下文与思考模式"
+                      >
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                        编辑
+                      </button>
+                    </div>
+                  ))}
+                  <div className="border-t border-slate-100 mt-1 pt-1">
+                    <button
+                      onClick={() => { props.onAddModel(); setShowModels(false); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 text-left"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-2.82 1.17V21a2 2 0 11-4 0v-.09A1.65 1.65 0 006 19.4l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15H4.5a2 2 0 110-4h.09A1.65 1.65 0 006 9.4" /></svg>
+                      添加模型
+                    </button>
+                  </div>
+                </div>
+                {/* 右: 纵向配置浮层 (点“编辑”后自动出现在列表右侧，不改变列表尺寸/位置) */}
+                {editModel && (
+                  <div className="absolute left-full top-0 ml-2 w-52 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 max-h-80 overflow-y-auto">
+                    <div className="px-3 py-1 text-sm font-medium text-slate-800 truncate">{editModel.name}</div>
+                    <div className="px-3 pt-1.5 pb-0.5 text-[11px] text-slate-400">上下文窗口</div>
+                    {CONTEXT_TIERS.map((tier) => (
+                      <button
+                        key={tier.value}
+                        onClick={() => props.onRuntime(editModel.id, tier.value, undefined)}
+                        className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        <span>{tier.label}</span>
+                        {editModel.context_window === tier.value && <span className="text-[#10a37f] text-xs">✓</span>}
+                      </button>
+                    ))}
+                    <div className="border-t border-slate-100 my-1" />
+                    <div className="flex items-center justify-between px-3 py-1.5">
+                      <span className="text-[11px] text-slate-400">思考模式</span>
+                      <span
+                        onClick={() => props.onRuntime(editModel.id, undefined, editModel.thinking === "off" ? "medium" : "off")}
+                        className={`w-9 h-5 rounded-full relative cursor-pointer transition ${editModel.thinking !== "off" ? "bg-[#10a37f]" : "bg-slate-300"}`}
+                      >
+                        <span className="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all" style={{ left: editModel.thinking !== "off" ? "18px" : "2px" }} />
+                      </span>
+                    </div>
+                    {editModel.thinking !== "off" &&
+                      (["low", "medium", "high"] as ThinkingLevel[]).map((lv) => (
+                        <button
+                          key={lv}
+                          onClick={() => props.onRuntime(editModel.id, undefined, lv)}
+                          className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                          <span>{THINKING_LABELS[lv]}</span>
+                          {editModel.thinking === lv && <span className="text-[#10a37f] text-xs">✓</span>}
+                        </button>
+                      ))}
+                    {!editModel.supports_thinking && (
+                      <div className="px-3 pt-1 text-[11px] text-amber-600">该模型未标记支持思考</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 发送 / 停止 / 入队 */}
+        {props.running && !props.input.trim() && props.attachments.length === 0 ? (
+          <button
+            onClick={props.onCancel}
+            className="w-9 h-9 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center"
+            title="停止当前任务"
+          >
+            <span className="w-3 h-3 bg-white rounded-[2px]" />
+          </button>
+        ) : (
+          <button
+            onClick={props.onSend}
+            className="w-9 h-9 rounded-full bg-[#10a37f] hover:bg-[#0e9070] text-white flex items-center justify-center disabled:opacity-40"
+            disabled={!props.input.trim() && props.attachments.length === 0}
+            title={props.running ? "加入队列，任务结束后自动发送" : "发送"}
+          >
+            {props.running ? (
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+
+      {/* 工作目录 (紧贴输入区，灰底无缝，与卡片共为一个圆角块) */}
+      <div className="bg-slate-100 rounded-b-2xl px-3 py-2 flex items-center">
+        <button
+          onClick={props.onPickWorkspace}
+          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700"
+          title={props.workspace}
+        >
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+          </svg>
+          {wsName}
+          <Chevron />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+/* ---------------- 消息气泡 ---------------- */
+
+function MessageBubble({ msg }: { msg: UiMsg }) {
+  const mdRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState<null | "text" | "md">(null);
+  const copy = async (kind: "text" | "md") => {
+    const val = kind === "md" ? msg.text : (mdRef.current?.innerText ?? msg.text);
+    try {
+      await navigator.clipboard.writeText(val);
+      setCopied(kind);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      /* 忽略复制失败 */
+    }
+  };
+
+  if (msg.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-2xl flex flex-col items-end gap-1.5">
+          {msg.attachments && msg.attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 justify-end">
+              {msg.attachments.map((p) => (
+                <span
+                  key={p}
+                  className="flex items-center gap-1 bg-[#e8f5ee] text-[#0e7a5f] rounded-lg px-2 py-1 text-xs max-w-[220px]"
+                  title={p}
+                >
+                  <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <path d="M14 2v6h6" />
+                  </svg>
+                  <span className="truncate">{p.split(/[\\/]/).pop()}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {msg.text && (
+            <div className="bg-[#eeeeee] text-slate-900 rounded-2xl rounded-br-md px-4 py-2.5 text-sm whitespace-pre-wrap">
+              {msg.text}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex justify-start">
+      <div className="max-w-full w-full space-y-2">
+        {msg.text && (
+          <div ref={mdRef} className="text-[15px] text-slate-800 md leading-relaxed">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+            {msg.streaming && <span className="inline-block w-2 h-4 bg-[#10a37f] animate-pulse ml-0.5 align-middle" />}
+          </div>
+        )}
+        {msg.tools?.map((t) => (
+          <ToolCard key={t.id} tool={t} />
+        ))}
+        {/* AI 回复末尾: 复制文本 / 复制 Markdown */}
+        {msg.text && !msg.streaming && (
+          <div className="flex items-center gap-1 pt-0.5">
+            <button
+              onClick={() => copy("text")}
+              title="复制文本"
+              className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+            >
+              {copied === "text" ? (
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#10a37f]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+              )}
+            </button>
+            <button
+              onClick={() => copy("md")}
+              title="复制 Markdown"
+              className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+            >
+              {copied === "md" ? (
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#10a37f]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+              ) : (
+                <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor"><path d="M14.85 3H1.15C.52 3 0 3.52 0 4.15v7.69C0 12.48.52 13 1.15 13h13.69c.64 0 1.15-.52 1.15-1.15v-7.7C16 3.52 15.48 3 14.85 3zM9 11H7V8L5.5 9.92 4 8v3H2V5h2l1.5 2L7 5h2v6zm2.99.5L9.5 8H11V5h2v3h1.5l-2.51 3.5z" /></svg>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ToolCard({ tool }: { tool: ToolCall }) {
+  const [open, setOpen] = useState(false);
+  const status = tool.ok === undefined ? "running" : tool.ok ? "ok" : "err";
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-lg text-xs overflow-hidden">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-100">
+        <span>{status === "running" ? "⏳" : status === "ok" ? "🔧" : "⚠️"}</span>
+        <span className="font-mono text-slate-700">{tool.name}</span>
+        <span className="text-slate-400 truncate flex-1 text-left">{summarizeInput(tool.input)}</span>
+        <span className="text-slate-400">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2 border-t border-slate-200">
+          <div>
+            <div className="text-slate-400 mt-2 mb-1">参数</div>
+            <pre className="bg-white border border-slate-200 rounded p-2 overflow-x-auto text-slate-700">
+              {JSON.stringify(tool.input, null, 2)}
+            </pre>
+          </div>
+          {tool.output !== undefined && (
+            <div>
+              <div className="text-slate-400 mb-1">结果</div>
+              <pre className={`bg-white border border-slate-200 rounded p-2 overflow-x-auto max-h-64 ${tool.ok ? "text-slate-700" : "text-red-600"}`}>
+                {tool.output}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function summarizeInput(input: any): string {
+  if (!input) return "";
+  if (input.command) return input.command;
+  if (input.path) return input.path;
+  if (input.pattern) return input.pattern;
+  if (input.name) return input.name;
+  if (input.subject) return input.subject;
+  return JSON.stringify(input).slice(0, 80);
+}
