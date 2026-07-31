@@ -6,15 +6,13 @@ import ChatView from "./views/ChatView";
 import ApprovalDialog from "./views/ApprovalDialog";
 import SkillsView from "./views/SkillsView";
 import CronView from "./views/CronView";
-import McpView from "./views/McpView";
 import SettingsDialog from "./views/SettingsDialog";
 import ModelEditor from "./views/ModelEditor";
 
 type Tab =
   | "chat"
   | "skills"
-  | "cron"
-  | "mcp";
+  | "cron";
 
 interface NavItem {
   id: Tab;
@@ -34,7 +32,6 @@ const icon = (path: string) => (
 const NAV_MAIN: NavItem[] = [
   { id: "chat", label: "新任务", icon: icon("M12 5v14|M5 12h14") },
   { id: "skills", label: "技能", icon: icon("M4 7h16|M4 12h16|M4 17h10") },
-  { id: "mcp", label: "连接器", icon: icon("M9 7V4h6v3|M4 7h16v13H4z|M9 12h6") },
   { id: "cron", label: "定时任务", icon: icon("M12 8v4l3 2|M12 3a9 9 0 100 18 9 9 0 000-18z") },
 ];
 
@@ -327,7 +324,6 @@ export default function App() {
             onNotice={pushNotice}
           />
         )}
-        {tab === "mcp" && <McpView />}
       </main>
       </div>
 

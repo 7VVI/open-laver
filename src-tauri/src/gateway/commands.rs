@@ -267,6 +267,16 @@ pub async fn cancel_turn(state: St<'_>, session_id: String) -> Result<(), String
     Ok(())
 }
 
+/// 查询会话当前是否正在执行 turn (供切回会话时同步暂停键状态)
+#[tauri::command]
+pub async fn is_session_running(state: St<'_>, session_id: String) -> Result<bool, String> {
+    Ok(state
+        .sessions
+        .get(&session_id)
+        .map(|s| s.running.load(std::sync::atomic::Ordering::SeqCst))
+        .unwrap_or(false))
+}
+
 // ---------------- s03 审批 ----------------
 
 #[tauri::command]

@@ -3,8 +3,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../lib/api";
 import ModelsView from "./ModelsView";
 import MemoryView from "./MemoryView";
+import McpView from "./McpView";
 
-type Cat = "system" | "models" | "memory" | "help";
+type Cat = "system" | "models" | "mcp" | "memory" | "help";
 
 const svg = (paths: string) => (
   <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor"
@@ -18,6 +19,7 @@ const svg = (paths: string) => (
 const CATS: { id: Cat; label: string; icon: JSX.Element }[] = [
   { id: "system", label: "系统设置", icon: svg("M12 15a3 3 0 100-6 3 3 0 000 6|M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-2.82 1.17V21a2 2 0 11-4 0v-.09A1.65 1.65 0 006 19.4l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15H4.5a2 2 0 110-4h.09A1.65 1.65 0 006 9.4") },
   { id: "models", label: "模型", icon: svg("M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.6L5.7 21 8 14 2 9.4h7.6z") },
+  { id: "mcp", label: "MCP", icon: svg("M9 7V4h6v3|M4 7h16v13H4z|M9 12h6") },
   { id: "memory", label: "记忆", icon: svg("M12 3a4 4 0 00-4 4v1a3 3 0 00-1 5.83V17a3 3 0 006 0|M12 3a4 4 0 014 4v1a3 3 0 011 5.83V17a3 3 0 01-6 0") },
   { id: "help", label: "帮助与反馈", icon: svg("M12 17h.01|M12 3a9 9 0 100 18 9 9 0 000-18z|M9.1 9a3 3 0 015.8 1c0 2-3 2.5-3 2.5") },
 ];
@@ -88,6 +90,7 @@ export default function SettingsDialog({
           <div className="h-full overflow-y-auto">
             {cat === "system" && <SystemPane onNotice={onNotice} />}
             {cat === "models" && <ModelsView onChanged={onModelsChanged} />}
+            {cat === "mcp" && <McpView />}
             {cat === "memory" && <MemoryView />}
             {cat === "help" && <HelpPane onNotice={onNotice} />}
           </div>

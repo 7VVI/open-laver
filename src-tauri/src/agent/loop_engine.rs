@@ -229,6 +229,26 @@ pub async fn run_agent_loop(
             }
         };
 
+        // s11: 输出被 max_tokens 截断 (含工具参数被截断) -> 升级上限重试，丢弃残缺回复
+        if response.stop_reason == StopReason::MaxTokens {
+            match recovery.on_max_tokens() {
+                RecoveryAction::EscalateMaxTokens | RecoveryAction::ContinueTruncated => {
+                    notice(&ctx.app, "warn", "本轮输出超出长度上限，已提高上限并重试…");
+                    continue;
+                }
+                RecoveryAction::GiveUp(m) => {
+                    push_error_message(
+                        session,
+                        &ctx.app,
+                        &format!("生成失败：{m}。建议把大文件拆成多次写入，或缩短单次内容。"),
+                    )
+                    .await;
+                    break;
+                }
+                _ => {}
+            }
+        }
+
         // 追加 assistant 回复
         {
             let mut st = session.state.lock().await;

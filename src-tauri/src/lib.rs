@@ -74,6 +74,7 @@ pub fn run() {
             gateway::commands::load_session_messages,
             gateway::commands::send_message,
             gateway::commands::cancel_turn,
+            gateway::commands::is_session_running,
             gateway::commands::resolve_approval,
             gateway::commands::get_workspace,
             gateway::commands::set_workspace,

@@ -121,7 +121,11 @@ export default function ChatView({
     streamingText.current = "";
     setRunning(false);
     setQueueBoth(() => []);
+    let alive = true;
+    // 切回正在执行的会话时，同步运行态，保证暂停键可用
+    api.isSessionRunning(sessionId).then((r) => { if (alive) setRunning(r); }).catch(() => {});
     api.loadMessages(sessionId).then((raw: Message[]) => {
+      if (!alive) return;
       const ui: UiMsg[] = [];
       for (const m of raw) {
         const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
@@ -141,7 +145,8 @@ export default function ChatView({
       }
       setMessages(ui);
     });
-    api.getTodos(sessionId).then(setTodos);
+    api.getTodos(sessionId).then((t) => { if (alive) setTodos(t); });
+    return () => { alive = false; };
   }, [sessionId]);
 
   useEffect(() => {
@@ -298,6 +303,7 @@ export default function ChatView({
       onAddModel={onAddModel}
       onManageModels={onManageModels}
       workspace={workspace}
+      showWorkspace={!hasMessages}
       onPickWorkspace={async () => {
         const dir = await open({ directory: true, multiple: false });
         if (typeof dir === "string") { await api.setWorkspace(dir); setWorkspace(dir); }
@@ -392,6 +398,7 @@ function Composer(props: {
   onAddModel: () => void;
   onManageModels: () => void;
   workspace: string;
+  showWorkspace: boolean;
   onPickWorkspace: () => void;
 }) {
   const [showModels, setShowModels] = useState(false);
@@ -451,7 +458,7 @@ function Composer(props: {
         </div>
       )}
 
-    <div className="border border-slate-200 rounded-t-2xl shadow-[0_2px_16px_rgba(0,0,0,0.05)] bg-white">
+    <div className={`border border-slate-200 shadow-[0_2px_16px_rgba(0,0,0,0.05)] bg-white ${props.showWorkspace ? "rounded-t-2xl" : "rounded-2xl"}`}>
       {/* 附件 chips */}
       {props.attachments.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pt-3">
@@ -729,20 +736,22 @@ function Composer(props: {
       </div>
     </div>
 
-      {/* 工作目录 (紧贴输入区，灰底无缝，与卡片共为一个圆角块) */}
-      <div className="bg-slate-100 rounded-b-2xl px-3 py-2 flex items-center">
-        <button
-          onClick={props.onPickWorkspace}
-          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700"
-          title={props.workspace}
-        >
-          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-          </svg>
-          {wsName}
-          <Chevron />
-        </button>
-      </div>
+      {/* 工作目录 (仅空会话显示; 一旦对话过就隐藏，不再允许切换) */}
+      {props.showWorkspace && (
+        <div className="bg-slate-100 rounded-b-2xl px-3 py-2 flex items-center">
+          <button
+            onClick={props.onPickWorkspace}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700"
+            title={props.workspace}
+          >
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            {wsName}
+            <Chevron />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -810,9 +819,7 @@ function MessageBubble({ msg }: { msg: UiMsg }) {
             {msg.streaming && <span className="inline-block w-2 h-4 bg-[#10a37f] animate-pulse ml-0.5 align-middle" />}
           </div>
         )}
-        {msg.tools?.map((t) => (
-          <ToolCard key={t.id} tool={t} />
-        ))}
+        {msg.tools && msg.tools.length > 0 && <ToolActivity tools={msg.tools} />}
         {/* AI 回复末尾: 复制文本 / 复制 Markdown */}
         {msg.text && !msg.streaming && (
           <div className="flex items-center gap-1 pt-0.5">
@@ -841,6 +848,103 @@ function MessageBubble({ msg }: { msg: UiMsg }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ---------------- 工具活动列表 (紧凑) ---------------- */
+
+const truncTxt = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
+const baseName = (p?: string) => (p ? p.split(/[\\/]/).pop() : "");
+
+function toolLabel(t: ToolCall): string {
+  const i: any = t.input || {};
+  switch (t.name) {
+    case "read_file": return `读取文件 ${baseName(i.path) ?? ""}`.trim();
+    case "write_file": return `写入文件 ${baseName(i.path) ?? ""}`.trim();
+    case "edit_file": return `编辑文件 ${baseName(i.path) ?? ""}`.trim();
+    case "glob": return `查找文件 ${i.pattern ?? ""}`.trim();
+    case "shell": return "执行命令" + (i.command ? `：${truncTxt(String(i.command), 48)}` : "");
+    case "todo_write": return Array.isArray(i.todos) ? `更新待办 ${i.todos.length} 项` : "更新待办";
+    case "load_skill": return `加载技能 ${i.name ?? ""}`.trim();
+    case "remember": return "更新记忆";
+    case "task_create":
+    case "task": return "创建任务" + (i.description ? `：${truncTxt(String(i.description), 36)}` : "");
+    case "task_list": return "查看任务列表";
+    case "task_claim": return "认领任务";
+    case "task_complete": return "完成任务";
+    case "cron_schedule": return "设置定时任务";
+    case "cron_list": return "查看定时任务";
+    case "send_message": return "发送消息";
+    case "spawn_teammate": return "创建协作队友";
+    case "create_worktree": return "创建工作区";
+    default: return t.name;
+  }
+}
+
+function ToolStatusIcon({ status }: { status: "running" | "ok" | "err" }) {
+  if (status === "running")
+    return <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#10a37f] animate-spin shrink-0" />;
+  if (status === "err")
+    return (
+      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+    );
+  return (
+    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+  );
+}
+
+function ToolActivity({ tools }: { tools: ToolCall[] }) {
+  const [open, setOpen] = useState(true);
+  const running = tools.some((t) => t.ok === undefined);
+  return (
+    <div className="text-sm">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 py-0.5"
+      >
+        {running ? (
+          <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#10a37f] animate-spin" />
+        ) : (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#10a37f]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+        )}
+        <span>{running ? "处理中…" : `已完成 ${tools.length} 步`}</span>
+        <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 transition-transform ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div className="mt-1 ml-[7px] border-l-2 border-slate-100 pl-3 space-y-0.5">
+          {tools.map((t) => (
+            <ToolLine key={t.id} tool={t} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ToolLine({ tool }: { tool: ToolCall }) {
+  const [open, setOpen] = useState(false);
+  const status = tool.ok === undefined ? "running" : tool.ok ? "ok" : "err";
+  const hasDetail = (tool.input && Object.keys(tool.input).length > 0) || !!tool.output;
+  return (
+    <div>
+      <button
+        onClick={() => hasDetail && setOpen((v) => !v)}
+        className={`w-full flex items-center gap-2 py-0.5 text-left text-slate-600 ${hasDetail ? "hover:text-slate-800 cursor-pointer" : "cursor-default"}`}
+      >
+        <ToolStatusIcon status={status} />
+        <span className="truncate">{toolLabel(tool)}</span>
+      </button>
+      {open && hasDetail && (
+        <div className="ml-[22px] my-1 rounded-lg bg-slate-50 border border-slate-100 p-2 text-xs text-slate-500 space-y-1 max-h-64 overflow-auto">
+          {tool.input && Object.keys(tool.input).length > 0 && (
+            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(tool.input, null, 2)}</pre>
+          )}
+          {tool.output && (
+            <pre className="whitespace-pre-wrap break-all border-t border-slate-200 pt-1">{truncTxt(tool.output, 4000)}</pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }

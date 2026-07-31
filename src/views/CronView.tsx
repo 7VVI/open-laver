@@ -4,24 +4,40 @@ import { api, CronJob, CronRun } from "../lib/api";
 
 /* ---------------- 频率 / cron 工具 ---------------- */
 
-type Freq = "hourly" | "daily" | "weekday" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun" | "monthly";
+type Freq = "interval" | "hourly" | "daily" | "weekday" | "weekly" | "monthly";
+type IntervalUnit = "minute" | "hour" | "day";
 
 const FREQ_OPTIONS: { id: Freq; label: string }[] = [
+  { id: "interval", label: "间隔触发" },
   { id: "hourly", label: "每小时" },
   { id: "daily", label: "每天" },
   { id: "weekday", label: "工作日" },
-  { id: "mon", label: "每周一" },
-  { id: "tue", label: "每周二" },
-  { id: "wed", label: "每周三" },
-  { id: "thu", label: "每周四" },
-  { id: "fri", label: "每周五" },
-  { id: "sat", label: "每周六" },
-  { id: "sun", label: "每周日" },
+  { id: "weekly", label: "每周" },
   { id: "monthly", label: "每月 1 号" },
 ];
-const DOW: Record<string, string> = { mon: "1", tue: "2", wed: "3", thu: "4", fri: "5", sat: "6", sun: "0" };
 
-function buildCron(freq: Freq, time: string): string {
+const INTERVAL_UNITS: { id: IntervalUnit; label: string }[] = [
+  { id: "minute", label: "分钟" },
+  { id: "hour", label: "小时" },
+  { id: "day", label: "天" },
+];
+
+// 星期选择: label + cron dow (周一=1 ... 周六=6, 周日=0)
+const WEEKDAYS: { label: string; dow: number }[] = [
+  { label: "一", dow: 1 },
+  { label: "二", dow: 2 },
+  { label: "三", dow: 3 },
+  { label: "四", dow: 4 },
+  { label: "五", dow: 5 },
+  { label: "六", dow: 6 },
+  { label: "日", dow: 0 },
+];
+
+function buildCron(
+  freq: Freq,
+  time: string,
+  opts?: { weekdays?: number[]; intervalN?: number; intervalUnit?: IntervalUnit }
+): string {
   const [hh, mm] = (time || "09:00").split(":");
   const m = parseInt(mm || "0", 10);
   const h = parseInt(hh || "9", 10);
@@ -30,21 +46,38 @@ function buildCron(freq: Freq, time: string): string {
     case "daily": return `${m} ${h} * * *`;
     case "weekday": return `${m} ${h} * * 1-5`;
     case "monthly": return `${m} ${h} 1 * *`;
-    default: return `${m} ${h} * * ${DOW[freq] ?? "*"}`;
+    case "weekly": {
+      const days = opts?.weekdays && opts.weekdays.length ? opts.weekdays : [1];
+      return `${m} ${h} * * ${days.join(",")}`;
+    }
+    case "interval": {
+      const n = Math.max(1, Math.floor(opts?.intervalN ?? 1));
+      const u = opts?.intervalUnit ?? "hour";
+      if (u === "minute") return `*/${n} * * * *`;
+      if (u === "hour") return `0 */${n} * * *`;
+      return `0 0 */${n} * *`; // 天
+    }
+    default: return `${m} ${h} * * *`;
   }
 }
+
+const DOW_NAMES: Record<string, string> = { "0": "周日", "1": "周一", "2": "周二", "3": "周三", "4": "周四", "5": "周五", "6": "周六" };
 
 function describeCron(expr: string): string {
   const p = expr.trim().split(/\s+/);
   if (p.length < 5) return expr;
   const [mi, ho, dom, , dow] = p;
   const t = (h: string, m: string) => `${h.padStart(2, "0")}:${m.padStart(2, "0")}`;
+  // 间隔触发 (步进语法 */N)
+  if (mi.startsWith("*/")) return `每 ${mi.slice(2)} 分钟`;
+  if (ho.startsWith("*/")) return `每 ${ho.slice(2)} 小时`;
+  if (dom.startsWith("*/")) return `每 ${dom.slice(2)} 天`;
   if (ho === "*") return "每小时";
   if (dow === "1-5") return `工作日 ${t(ho, mi)}`;
   if (dom === "1") return `每月 1 号 ${t(ho, mi)}`;
   if (dow && dow !== "*") {
-    const names: Record<string, string> = { "0": "周日", "1": "周一", "2": "周二", "3": "周三", "4": "周四", "5": "周五", "6": "周六" };
-    return `每${names[dow] ?? "周"} ${t(ho, mi)}`;
+    const parts = dow.split(",").map((d) => DOW_NAMES[d] ?? d);
+    return `每${parts.join("、")} ${t(ho, mi)}`;
   }
   return `每天 ${t(ho, mi)}`;
 }
@@ -279,10 +312,10 @@ export default function CronView({
         <CronCreateDialog
           init={create}
           onClose={() => setCreate(null)}
-          onSaved={async (title, freq, time, prompt) => {
+          onSaved={async (title, freq, time, prompt, extra) => {
             const sid = sessionId ?? (await ensureSession());
             try {
-              await api.createCronJob(sid, title, buildCron(freq, time), prompt, true);
+              await api.createCronJob(sid, title, buildCron(freq, time, extra), prompt, true);
               onNotice?.("info", "已创建定时任务");
               setCreate(null);
               refresh();
@@ -305,18 +338,31 @@ function CronCreateDialog({
 }: {
   init: { title: string; prompt: string; freq: Freq; time: string };
   onClose: () => void;
-  onSaved: (title: string, freq: Freq, time: string, prompt: string) => void;
+  onSaved: (
+    title: string,
+    freq: Freq,
+    time: string,
+    prompt: string,
+    extra: { weekdays: number[]; intervalN: number; intervalUnit: IntervalUnit }
+  ) => void;
 }) {
   const [title, setTitle] = useState(init.title);
   const [freq, setFreq] = useState<Freq>(init.freq);
   const [time, setTime] = useState(init.time);
   const [prompt, setPrompt] = useState(init.prompt);
+  const [weekdays, setWeekdays] = useState<number[]>([1]);
+  const [intervalN, setIntervalN] = useState(1);
+  const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>("hour");
   const [saving, setSaving] = useState(false);
 
   const save = () => {
     if (!prompt.trim()) return;
     setSaving(true);
-    onSaved(title.trim() || prompt.trim().slice(0, 20), freq, time, prompt.trim());
+    onSaved(title.trim() || prompt.trim().slice(0, 20), freq, time, prompt.trim(), {
+      weekdays,
+      intervalN,
+      intervalUnit,
+    });
   };
 
   const pickWs = async () => {
@@ -351,14 +397,58 @@ function CronCreateDialog({
                   <option key={f.id} value={f.id}>{f.label}</option>
                 ))}
               </select>
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                disabled={freq === "hourly"}
-                className={`${field} flex-1 disabled:opacity-50`}
-              />
+              {freq === "interval" ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <span className="text-sm text-slate-500">每</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={intervalN}
+                    onChange={(e) => setIntervalN(Math.max(1, parseInt(e.target.value || "1", 10)))}
+                    className={`${field} w-20`}
+                  />
+                  <select value={intervalUnit} onChange={(e) => setIntervalUnit(e.target.value as IntervalUnit)} className={`${field} flex-1`}>
+                    {INTERVAL_UNITS.map((u) => (
+                      <option key={u.id} value={u.id}>{u.label}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  disabled={freq === "hourly"}
+                  className={`${field} flex-1 disabled:opacity-50`}
+                />
+              )}
             </div>
+            {/* 选“每周”后选择具体星期 (可多选) */}
+            {freq === "weekly" && (
+              <div className="flex gap-1.5 mt-2">
+                {WEEKDAYS.map((w) => {
+                  const on = weekdays.includes(w.dow);
+                  return (
+                    <button
+                      key={w.dow}
+                      type="button"
+                      onClick={() =>
+                        setWeekdays((prev) =>
+                          on ? prev.filter((d) => d !== w.dow) : [...prev, w.dow]
+                        )
+                      }
+                      className={`w-9 h-9 rounded-lg text-sm transition ${
+                        on
+                          ? "bg-slate-800 text-white"
+                          : "border border-slate-300 text-slate-600 hover:bg-slate-50"
+                      }`}
+                    >
+                      {w.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div>

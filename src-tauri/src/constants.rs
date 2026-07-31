@@ -19,10 +19,10 @@ pub const COMPACT_RESERVE_TOKENS: usize = 13_000;
 /// s08: reactive compact 保留尾部消息条数
 pub const REACTIVE_KEEP_TAIL: usize = 5;
 
-/// s11: 默认输出 token 上限
-pub const MAX_OUTPUT_TOKENS: u32 = 8_000;
-/// s11: 截断后升级的输出 token 上限 (8K -> 64K)
-pub const MAX_OUTPUT_TOKENS_ESCALATED: u32 = 64_000;
+/// s11: 默认输出 token 上限 (适当括容写文件/报告等较长输出)
+pub const MAX_OUTPUT_TOKENS: u32 = 16_000;
+/// s11: 截断后升级的输出 token 上限 (兼容大多数模型上限)
+pub const MAX_OUTPUT_TOKENS_ESCALATED: u32 = 32_000;
 /// s11: 续写重试上限
 pub const MAX_CONTINUATION_ATTEMPTS: u32 = 3;
 /// s11: 429/529 重试上限

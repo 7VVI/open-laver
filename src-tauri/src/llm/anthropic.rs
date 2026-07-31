@@ -66,6 +66,8 @@ enum PartialBlock {
         id: String,
         name: String,
         json_buf: String,
+        /// content_block_start 中可能直接携带的初始 input (部分兼容端)
+        seed_input: Value,
     },
 }
 
@@ -142,6 +144,7 @@ impl LlmProvider for AnthropicProvider {
                                 id: cb["id"].as_str().unwrap_or("").to_string(),
                                 name,
                                 json_buf: String::new(),
+                                seed_input: cb.get("input").cloned().unwrap_or(Value::Null),
                             });
                         }
                         _ => blocks.push(PartialBlock::Text(
@@ -206,6 +209,7 @@ impl LlmProvider for AnthropicProvider {
             return Err(e);
         }
 
+        let mut truncated_tool = false;
         let content: Vec<ContentBlock> = blocks
             .into_iter()
             .filter_map(|b| match b {
@@ -216,16 +220,36 @@ impl LlmProvider for AnthropicProvider {
                         Some(ContentBlock::Text { text: s })
                     }
                 }
-                PartialBlock::ToolUse { id, name, json_buf } => {
-                    let input: Value = if json_buf.trim().is_empty() {
-                        json!({})
+                PartialBlock::ToolUse { id, name, json_buf, seed_input } => {
+                    let input: Value = if !json_buf.trim().is_empty() {
+                        // 优先用流式累加的 JSON; 解析失败 = 被截断
+                        match serde_json::from_str(&json_buf) {
+                            Ok(v) => v,
+                            Err(_) => {
+                                truncated_tool = true;
+                                eprintln!(
+                                    "[anthropic] 工具 {name} 参数 JSON 被截断 ({} 字节)",
+                                    json_buf.len()
+                                );
+                                json!({})
+                            }
+                        }
+                    } else if seed_input.is_object()
+                        && seed_input.as_object().map(|o| !o.is_empty()).unwrap_or(false)
+                    {
+                        seed_input
                     } else {
-                        serde_json::from_str(&json_buf).unwrap_or(json!({}))
+                        json!({})
                     };
                     Some(ContentBlock::ToolUse { id, name, input })
                 }
             })
             .collect();
+
+        // 工具参数被截断 -> 当作 max_tokens 截断处理 (供上层升级重试)
+        if truncated_tool && stop_reason == StopReason::EndTurn {
+            stop_reason = StopReason::MaxTokens;
+        }
 
         on_event(StreamEvent::Done);
         Ok(LlmResponse {

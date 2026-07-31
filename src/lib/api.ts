@@ -121,6 +121,7 @@ export const api = {
   sendMessage: (sessionId: string, content: string, attachments?: string[]) =>
     invoke("send_message", { sessionId, content, attachments: attachments ?? null }),
   cancelTurn: (sessionId: string) => invoke("cancel_turn", { sessionId }),
+  isSessionRunning: (sessionId: string) => invoke<boolean>("is_session_running", { sessionId }),
   resolveApproval: (approvalId: string, decision: string) =>
     invoke("resolve_approval", { approvalId, decision }),
 
