@@ -4,8 +4,8 @@ import { useTauriEvent, EV } from "../lib/events";
 
 const COLUMNS = [
   { status: "pending", label: "待处理", color: "text-slate-500" },
-  { status: "in_progress", label: "进行中", color: "text-[#10a37f]" },
-  { status: "completed", label: "已完成", color: "text-emerald-600" },
+  { status: "in_progress", label: "进行中", color: "text-[#8b5cf6]" },
+  { status: "completed", label: "已完成", color: "text-violet-600" },
 ];
 
 export default function TaskBoard() {
@@ -44,7 +44,7 @@ export default function TaskBoard() {
                       )}
                       <div className="flex items-center gap-2 mt-2 text-[10px] text-slate-400">
                         <span className="font-mono">{t.id.slice(0, 10)}</span>
-                        {t.owner && <span className="text-[#10a37f]">@{t.owner}</span>}
+                        {t.owner && <span className="text-[#8b5cf6]">@{t.owner}</span>}
                         {t.worktree && <span className="text-purple-500">⑂{t.worktree}</span>}
                       </div>
                       {t.blocked_by.length > 0 && (

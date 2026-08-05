@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640" font-family="sans-serif">
+  <defs>
+    <linearGradient id="gIcon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f7f6fe"/>
+      <stop offset="0.55" stop-color="#e9e7fc"/>
+      <stop offset="1" stop-color="#dcd9fb"/>
+    </linearGradient>
+    <linearGradient id="gWave" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7163f7"/>
+      <stop offset="0.4" stop-color="#5b4cf5"/>
+      <stop offset="1" stop-color="#4c40f2"/>
+    </linearGradient>
+    <linearGradient id="gEarIn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a678fb"/>
+      <stop offset="0.55" stop-color="#c890fc"/>
+      <stop offset="1" stop-color="#f6eaff"/>
+    </linearGradient>
+    <radialGradient id="gFace" cx="0.5" cy="0.4" r="0.8">
+      <stop offset="0" stop-color="#141a4a"/>
+      <stop offset="0.7" stop-color="#0a0f34"/>
+      <stop offset="1" stop-color="#060b26"/>
+    </radialGradient>
+    <linearGradient id="gEye" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6a5df0"/>
+      <stop offset="0.45" stop-color="#7f9dff"/>
+      <stop offset="1" stop-color="#cfeeff"/>
+    </linearGradient>
+    <linearGradient id="gHelmet" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.7" stop-color="#f4f0fd"/>
+      <stop offset="1" stop-color="#e2dcf8"/>
+    </linearGradient>
+    <radialGradient id="gCup" cx="0.4" cy="0.35" r="0.8">
+      <stop offset="0" stop-color="#2e36b8"/>
+      <stop offset="0.7" stop-color="#1d2470"/>
+      <stop offset="1" stop-color="#141a52"/>
+    </radialGradient>
+    <linearGradient id="gRing" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9d8bfa"/>
+      <stop offset="1" stop-color="#6a5ae0"/>
+    </linearGradient>
+    <filter id="fGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="fEye" x="-120%" y="-120%" width="340%" height="340%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="fSoft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+    <clipPath id="clipIcon"><rect x="0" y="0" width="640" height="640" rx="150"/></clipPath>
+  </defs>
+
+  <g transform="translate(-180,-170)">
+  <rect x="180" y="170" width="640" height="640" rx="150" fill="url(#gIcon)"/>
+
+  <g clip-path="url(#clipIcon)">
+    <circle cx="515" cy="450" r="220" fill="#e7e7fc"/>
+    <ellipse cx="505" cy="520" rx="240" ry="200" fill="#cfc4fb" opacity="0.35" filter="url(#fSoft)"/>
+
+    <!-- 对话气泡 -->
+    <rect x="207" y="298" width="163" height="220" rx="78" fill="#e9e9fe"/>
+    <path d="M240,500 C238,538 236,558 231,577 C252,556 273,539 293,521 Z" fill="#e9e9fe"/>
+    <circle cx="258" cy="450" r="14" fill="#7c52fc"/>
+    <circle cx="296" cy="450" r="14" fill="#7c52fc"/>
+    <circle cx="334" cy="450" r="14" fill="#7c52fc"/>
+
+    <!-- 星光 -->
+    <path d="M277,331 C280,349 286,355 303,358 C286,361 280,367 277,385 C274,367 268,361 251,358 C268,355 274,349 277,331 Z" fill="#7c8bfc"/>
+    <path d="M757,361 C759.5,374 764,378.5 777,381 C764,383.5 759.5,388 757,401 C754.5,388 750,383.5 737,381 C750,378.5 754.5,374 757,361 Z" fill="#8b7cf4"/>
+
+    <!-- ============ 头部 ============ -->
+    <g transform="translate(-55,26) translate(500,450) scale(1.07) translate(-500,-450)">
+      <!-- 耳朵 -->
+      <path d="M364,258 C336,284 318,344 322,406 C323,419 334,423 345,416 C376,395 414,372 446,361 C457,357 459,346 452,337 C430,305 396,276 364,258 Z" fill="#1e2145"/>
+      <path d="M366,290 C350,310 340,348 342,384 C365,368 392,351 417,343 C403,321 385,303 366,290 Z" fill="url(#gEarIn)" filter="url(#fGlow)"/>
+      <ellipse cx="374" cy="354" rx="11" ry="17" fill="#ffffff" opacity="0.85" filter="url(#fGlow)"/>
+      <path d="M672,246 C699,270 716,330 712,388 C711,401 700,405 690,398 C661,378 626,357 596,346 C585,342 583,331 590,322 C611,291 643,262 672,246 Z" fill="#1e2145"/>
+      <path d="M669,276 C685,296 695,332 693,368 C670,352 643,335 618,327 C632,305 650,287 669,276 Z" fill="url(#gEarIn)" filter="url(#fGlow)"/>
+      <ellipse cx="664" cy="340" rx="11" ry="17" fill="#ffffff" opacity="0.85" filter="url(#fGlow)"/>
+
+      <!-- 耳机左杯 -->
+      <circle cx="332" cy="508" r="32" fill="#1b2160"/>
+      <circle cx="332" cy="508" r="32" fill="none" stroke="#f4f0fd" stroke-width="3" opacity="0.5"/>
+
+      <!-- 头盔 -->
+      <ellipse cx="508" cy="448" rx="172" ry="160" fill="url(#gHelmet)"/>
+      <path d="M512,296 C508,312 505,326 503,338" fill="none" stroke="#ddd6f4" stroke-width="3.5" opacity="0.5"/>
+      <rect x="414" y="380" width="120" height="26" rx="10" fill="#4a4472" transform="rotate(-2 474 393)"/>
+      <rect x="596" y="372" width="30" height="9" rx="4.5" fill="#8f7bf6" opacity="0.85" transform="rotate(24 611 376)"/>
+      <rect x="616" y="396" width="20" height="9" rx="4.5" fill="#8f7bf6" opacity="0.85" transform="rotate(24 626 400)"/>
+      <rect x="640" y="414" width="8" height="8" rx="2" fill="#8f7bf6" opacity="0.85" transform="rotate(24 644 418)"/>
+      <rect x="346" y="506" width="12" height="36" rx="6" fill="#8f7bf6" opacity="0.9"/>
+      <rect x="624" y="506" width="12" height="36" rx="6" fill="#8f7bf6" opacity="0.9"/>
+
+      <!-- 下巴护片 -->
+      <rect x="436" y="596" width="124" height="26" rx="12" fill="#e2dcf8"/>
+      <rect x="466" y="604" width="64" height="10" rx="5" fill="#2a2450"/>
+
+      <!-- 面罩 -->
+      <ellipse cx="494" cy="494" rx="136" ry="110" fill="none" stroke="#e6e1f8" stroke-width="10"/>
+      <ellipse cx="494" cy="494" rx="129" ry="103" fill="url(#gFace)" stroke="#2a2450" stroke-width="8"/>
+      <ellipse cx="562" cy="426" rx="44" ry="18" fill="#ffffff" opacity="0.15" transform="rotate(-18 562 426)"/>
+      <path d="M386,414 C430,382 556,380 602,414" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.18"/>
+
+      <!-- 眼睛：坚定上挑眼神 -->
+      <g filter="url(#fEye)">
+        <g transform="translate(434,512) rotate(7) scale(1.15)">
+          <ellipse cx="0" cy="0" rx="30" ry="39" fill="#080c2a"/>
+          <path d="M-2,-36 C12,-32 23,-16 23,4 C23,25 12,37 0,37 C-12,37 -23,25 -23,4 C-23,-16 -14,-32 -2,-36 Z" fill="url(#gEye)" stroke="#2a2050" stroke-width="3"/>
+          <ellipse cx="0" cy="15" rx="16" ry="17" fill="#eaffff" opacity="0.95"/>
+          <path d="M-24,-8 C-10,-24 12,-28 24,-14 L24,-40 L-24,-40 Z" fill="#080c2a"/>
+          <circle cx="-7" cy="-16" r="6" fill="#ffffff"/>
+          <path d="M-31,-22 C-23,-33 -12,-37 -2,-35" fill="none" stroke="#8f7bf6" stroke-width="7" stroke-linecap="round"/>
+        </g>
+        <g transform="translate(560,506) rotate(-7) scale(1.15)">
+          <ellipse cx="0" cy="0" rx="30" ry="39" fill="#080c2a"/>
+          <path d="M2,-36 C-12,-32 -23,-16 -23,4 C-23,25 -12,37 0,37 C12,37 23,25 23,4 C23,-16 14,-32 2,-36 Z" fill="url(#gEye)" stroke="#2a2050" stroke-width="3"/>
+          <ellipse cx="0" cy="15" rx="16" ry="17" fill="#eaffff" opacity="0.95"/>
+          <path d="M24,-8 C10,-24 -12,-28 -24,-14 L-24,-40 L24,-40 Z" fill="#080c2a"/>
+          <circle cx="-7" cy="-16" r="6" fill="#ffffff"/>
+          <path d="M2,-35 C12,-37 23,-33 31,-22" fill="none" stroke="#8f7bf6" stroke-width="7" stroke-linecap="round"/>
+        </g>
+      </g>
+
+      <!-- 鼻 + 嘴 + 胡须 -->
+      <path d="M469,532 C472,527 482,527 485,532 C483,539 471,539 469,532 Z" fill="#f1fcfd" filter="url(#fGlow)"/>
+      <path d="M456,552 C462,562 472,562 477,555 C482,562 492,562 498,552" fill="none" stroke="#f1fcfd" stroke-width="6" stroke-linecap="round" filter="url(#fGlow)"/>
+      <g stroke="#e2a6f7" stroke-width="6" stroke-linecap="round" filter="url(#fGlow)">
+        <path d="M382,556 L404,560"/>
+        <path d="M384,576 L406,574"/>
+        <path d="M576,552 L598,548"/>
+        <path d="M578,568 L600,566"/>
+      </g>
+
+      <!-- 耳机右杯 -->
+      <circle cx="690" cy="492" r="58" fill="#f4f0fd"/>
+      <circle cx="690" cy="492" r="48" fill="url(#gCup)" stroke="#10143f" stroke-width="5"/>
+      <g fill="none" stroke="#e8e9ff" stroke-width="3.5" stroke-linejoin="round" filter="url(#fGlow)">
+        <path d="M690,474 l8,14 h-16 Z"/>
+        <path d="M678,496 l8,14 h-16 Z"/>
+        <path d="M702,496 l8,14 h-16 Z"/>
+      </g>
+    </g>
+
+    <!-- 底部紫色波浪 -->
+    <path d="M180,745 C280,760 360,772 450,760 C540,748 600,724 680,724 C730,724 780,736 820,744 L820,810 L180,810 Z" fill="url(#gWave)"/>
+
+    <!-- 光环 swoosh -->
+    <path d="M776,502 C800,560 766,630 678,670 C578,714 442,716 360,680 C322,664 300,640 298,616" fill="none" stroke="url(#gRing)" stroke-width="8" stroke-linecap="round" filter="url(#fGlow)" opacity="0.95"/>
+  </g>
+  </g>
+</svg>

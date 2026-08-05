@@ -186,7 +186,7 @@ export default function CronView({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索定时任务..."
-            className="w-full bg-white border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-[#10a37f]"
+            className="w-full bg-white border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-[#8b5cf6]"
           />
         </div>
 
@@ -200,7 +200,7 @@ export default function CronView({
             保持系统唤醒
             <span
               onClick={() => { setKeepAwake(!keepAwake); onNotice?.("info", keepAwake ? "已关闭保持唤醒" : "已开启保持唤醒（需系统电源设置配合）"); }}
-              className={`w-9 h-5 rounded-full relative transition ${keepAwake ? "bg-[#10a37f]" : "bg-slate-300"}`}
+              className={`w-9 h-5 rounded-full relative transition ${keepAwake ? "bg-[#8b5cf6]" : "bg-slate-300"}`}
             >
               <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${keepAwake ? "left-4.5" : "left-0.5"}`} style={{ left: keepAwake ? "18px" : "2px" }} />
             </span>
@@ -215,7 +215,7 @@ export default function CronView({
               <button
                 key={ex.title}
                 onClick={() => openCreate({ title: ex.title, prompt: ex.prompt, freq: ex.freq, time: ex.time })}
-                className="text-left bg-white border border-slate-200 rounded-xl p-4 hover:border-[#10a37f] hover:shadow-sm transition"
+                className="text-left bg-white border border-slate-200 rounded-xl p-4 hover:border-[#8b5cf6] hover:shadow-sm transition"
               >
                 <div className="font-medium text-slate-800">{ex.title}</div>
                 <div className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">{ex.prompt}</div>
@@ -232,13 +232,13 @@ export default function CronView({
         <div className="mt-8 flex items-center gap-5 border-b border-slate-200">
           <button
             onClick={() => setTab("jobs")}
-            className={`pb-2 text-sm font-medium border-b-2 -mb-px ${tab === "jobs" ? "border-[#10a37f] text-slate-800" : "border-transparent text-slate-400 hover:text-slate-600"}`}
+            className={`pb-2 text-sm font-medium border-b-2 -mb-px ${tab === "jobs" ? "border-[#8b5cf6] text-slate-800" : "border-transparent text-slate-400 hover:text-slate-600"}`}
           >
             我的定时任务
           </button>
           <button
             onClick={() => setTab("runs")}
-            className={`pb-2 text-sm font-medium border-b-2 -mb-px ${tab === "runs" ? "border-[#10a37f] text-slate-800" : "border-transparent text-slate-400 hover:text-slate-600"}`}
+            className={`pb-2 text-sm font-medium border-b-2 -mb-px ${tab === "runs" ? "border-[#8b5cf6] text-slate-800" : "border-transparent text-slate-400 hover:text-slate-600"}`}
           >
             执行记录
           </button>
@@ -264,7 +264,7 @@ export default function CronView({
                     <div className="font-medium text-slate-800">{j.title || describeCron(j.expr)}</div>
                     <div className="text-sm text-slate-500 mt-1 line-clamp-2">{j.prompt}</div>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="inline-flex items-center gap-1 text-xs text-[#10a37f] bg-[#e8f5ee] rounded px-2 py-0.5">
+                      <span className="inline-flex items-center gap-1 text-xs text-[#8b5cf6] bg-[#f0e9ff] rounded px-2 py-0.5">
                         <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 8v4l3 2" /><circle cx="12" cy="12" r="9" /></svg>
                         {describeCron(j.expr)}
                       </span>
@@ -297,7 +297,7 @@ export default function CronView({
                       <div className="text-sm text-slate-700 truncate">{r.title || r.prompt}</div>
                       <div className="text-xs text-slate-400 mt-0.5">{new Date(r.ran_at).toLocaleString("zh-CN")}</div>
                     </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded shrink-0 ${r.trigger === "manual" ? "bg-amber-50 text-amber-600" : "bg-[#e8f5ee] text-[#10a37f]"}`}>
+                    <span className={`text-[10px] px-2 py-0.5 rounded shrink-0 ${r.trigger === "manual" ? "bg-amber-50 text-amber-600" : "bg-[#f0e9ff] text-[#8b5cf6]"}`}>
                       {r.trigger === "manual" ? "手动" : "定时"}
                     </span>
                   </div>
@@ -370,7 +370,7 @@ function CronCreateDialog({
     if (typeof dir === "string") await api.setWorkspace(dir);
   };
 
-  const field = "bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#10a37f]";
+  const field = "bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8b5cf6]";
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 fade-in" onClick={onClose}>

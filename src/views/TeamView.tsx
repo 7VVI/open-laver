@@ -11,7 +11,7 @@ interface TeamMsg {
 }
 
 const PHASE: Record<string, { label: string; color: string }> = {
-  work: { label: "工作中", color: "bg-[#e8f5ee] text-[#10a37f]" },
+  work: { label: "工作中", color: "bg-[#f0e9ff] text-[#8b5cf6]" },
   idle: { label: "空闲轮询", color: "bg-amber-50 text-amber-600" },
   shutdown: { label: "已关闭", color: "bg-slate-100 text-slate-500" },
 };
@@ -64,8 +64,8 @@ export default function TeamView() {
           {messages.map((m, i) => (
             <div key={i} className="text-xs bg-white border border-slate-200 rounded-lg p-2">
               <div className="flex items-center gap-1 text-slate-500">
-                <span className="text-[#10a37f]">{m.from}</span>→
-                <span className="text-emerald-600">{m.to}</span>
+                <span className="text-[#8b5cf6]">{m.from}</span>→
+                <span className="text-violet-600">{m.to}</span>
                 <span className="ml-auto text-[9px] px-1.5 rounded bg-slate-100 text-slate-500">{m.type}</span>
               </div>
               <div className="text-slate-700 mt-1">{m.content}</div>

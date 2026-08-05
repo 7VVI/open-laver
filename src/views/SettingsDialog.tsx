@@ -65,11 +65,11 @@ export default function SettingsDialog({
               onClick={() => setCat(c.id)}
               className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition ${
                 cat === c.id
-                  ? "bg-[#e8f5ee] text-[#10a37f] font-medium"
+                  ? "bg-[#f0e9ff] text-[#8b5cf6] font-medium"
                   : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              <span className={cat === c.id ? "text-[#10a37f]" : "text-slate-400"}>{c.icon}</span>
+              <span className={cat === c.id ? "text-[#8b5cf6]" : "text-slate-400"}>{c.icon}</span>
               {c.label}
             </button>
           ))}
@@ -132,7 +132,7 @@ function SystemPane({ onNotice }: { onNotice?: (level: string, text: string) => 
           />
           <button
             onClick={pick}
-            className="bg-[#10a37f] hover:bg-[#0e9070] text-white rounded-lg px-4 text-sm"
+            className="bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg px-4 text-sm"
           >
             选择
           </button>
@@ -166,7 +166,7 @@ function HelpPane({ onNotice }: { onNotice?: (level: string, text: string) => vo
       <Section title="问题反馈">
         <p className="text-sm text-slate-600">
           如有问题或建议，请通过邮箱反馈：
-          <span className="text-[#10a37f]"> support@openlaver.local</span>
+          <span className="text-[#8b5cf6]"> support@openlaver.local</span>
         </p>
         <p className="text-xs text-slate-400 mt-1">请附上操作步骤与截图，以便我们定位问题。</p>
       </Section>

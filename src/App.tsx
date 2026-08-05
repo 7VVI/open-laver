@@ -180,11 +180,11 @@ export default function App() {
       onClick={() => (item.id === "chat" ? newSession() : setTab(item.id))}
       className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition ${
         tab === item.id
-          ? "bg-[#e8f5ee] text-[#10a37f] font-medium"
+          ? "bg-[#f0e9ff] text-[#8b5cf6] font-medium"
           : "text-slate-600 hover:bg-slate-100"
       }`}
     >
-      <span className={tab === item.id ? "text-[#10a37f]" : "text-slate-400"}>{item.icon}</span>
+      <span className={tab === item.id ? "text-[#8b5cf6]" : "text-slate-400"}>{item.icon}</span>
       {item.label}
     </button>
   );
@@ -224,7 +224,7 @@ export default function App() {
         <div className="w-60 h-full flex flex-col">
         {/* 品牌 */}
         <div className="px-4 pt-4 pb-3 flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#10a37f] flex items-center justify-center text-white font-bold text-sm">
+          <div className="w-7 h-7 rounded-lg bg-[#8b5cf6] flex items-center justify-center text-white font-bold text-sm">
             L
           </div>
           <span className="font-semibold text-slate-800 text-[15px]">Laver 办公</span>
@@ -287,12 +287,12 @@ export default function App() {
         <div className="border-t border-slate-200 p-2 space-y-0.5">
           <button
             onClick={() => openSettings("system")}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition text-slate-600 hover:bg-slate-100"
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition text-slate-600 hover:bg-slate-100"
           >
+            设置
             <span className="text-slate-400">
               {icon("M12 15a3 3 0 100-6 3 3 0 000 6|M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-2.82 1.17V21a2 2 0 11-4 0v-.09A1.65 1.65 0 006 19.4l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15H4.5a2 2 0 110-4h.09A1.65 1.65 0 006 9.4")}
             </span>
-            设置
           </button>
         </div>
         </div>
@@ -400,14 +400,14 @@ function ChatWelcome({ onStart }: { onStart: () => void }) {
   return (
     <div className="h-full flex items-center justify-center">
       <div className="text-center">
-        <div className="w-12 h-12 rounded-2xl bg-[#10a37f] mx-auto flex items-center justify-center text-white text-2xl font-bold mb-5">
+        <div className="w-12 h-12 rounded-2xl bg-[#8b5cf6] mx-auto flex items-center justify-center text-white text-2xl font-bold mb-5">
           L
         </div>
         <h1 className="text-2xl font-bold text-slate-800">你好，我是 Laver 办公</h1>
         <p className="text-slate-500 mt-2">有什么需要我帮你搞定的？</p>
         <button
           onClick={onStart}
-          className="mt-6 bg-[#10a37f] hover:bg-[#0e9070] text-white rounded-xl px-6 py-2.5 text-sm font-medium shadow-sm"
+          className="mt-6 bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-xl px-6 py-2.5 text-sm font-medium shadow-sm"
         >
           开始新对话
         </button>
@@ -458,7 +458,7 @@ function SessionRow({
     >
       <span className="truncate flex items-center gap-1.5">
         {s.pinned && (
-          <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0 text-[#10a37f]" fill="currentColor">
+          <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0 text-[#8b5cf6]" fill="currentColor">
             <path d="M14 4v6l3 3v2H7v-2l3-3V4z" />
           </svg>
         )}
@@ -546,7 +546,7 @@ function RenameDialog({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onSave(value); if (e.key === "Escape") onClose(); }}
-          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#10a37f]"
+          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#8b5cf6]"
         />
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 text-slate-600">取消</button>
@@ -759,7 +759,7 @@ function InfoDialog({
         <div className="px-5 py-4 border-t border-slate-100 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-lg text-sm bg-[#10a37f] hover:bg-[#0e9070] text-white"
+            className="px-5 py-2 rounded-lg text-sm bg-[#8b5cf6] hover:bg-[#7c3aed] text-white"
           >
             知道了
           </button>
@@ -858,7 +858,7 @@ function SearchDialog({
               >
                 <span
                   className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                    s.id === activeId ? "bg-[#10a37f]" : "border-2 border-slate-300"
+                    s.id === activeId ? "bg-[#8b5cf6]" : "border-2 border-slate-300"
                   }`}
                 />
                 <span className="flex-1 truncate text-sm text-slate-700">{s.title}</span>

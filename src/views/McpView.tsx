@@ -82,12 +82,12 @@ export default function McpView() {
                   onChange={(e) => setConfigText(e.target.value)}
                   rows={10}
                   spellCheck={false}
-                  className="w-full font-mono text-xs bg-white border border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-[#10a37f]"
+                  className="w-full font-mono text-xs bg-white border border-slate-200 rounded-lg p-3 text-slate-700 focus:outline-none focus:border-[#8b5cf6]"
                 />
                 <div className="flex items-center gap-3 mt-2">
                   <button
                     onClick={save}
-                    className="bg-[#10a37f] hover:bg-[#0e9070] text-white rounded-lg px-4 py-2 text-sm"
+                    className="bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg px-4 py-2 text-sm"
                   >
                     保存并连接
                   </button>
@@ -118,7 +118,7 @@ export default function McpView() {
                   {servers.map((s) => (
                     <div key={s.name} className="bg-white border border-slate-200 rounded-lg p-3">
                       <div className="flex items-center gap-2">
-                        <span className={s.connected ? "text-emerald-500" : "text-red-400"}>
+                        <span className={s.connected ? "text-violet-500" : "text-red-400"}>
                           {s.connected ? "●" : "○"}
                         </span>
                         <span className="font-medium text-slate-800">{s.name}</span>

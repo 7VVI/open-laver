@@ -51,7 +51,7 @@ export default function ModelsView({ onChanged }: { onChanged?: () => void }) {
             </button>
             <button
               onClick={() => setAdding(true)}
-              className="text-sm bg-[#10a37f] hover:bg-[#0e9070] text-white rounded-lg px-3 py-1.5"
+              className="text-sm bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg px-3 py-1.5"
             >
               + 添加模型
             </button>
@@ -76,7 +76,7 @@ export default function ModelsView({ onChanged }: { onChanged?: () => void }) {
             <div
               key={m.id}
               className={`rounded-xl border p-4 ${
-                m.active ? "border-[#10a37f] bg-[#f2fbf7]" : "border-slate-200 bg-white"
+                m.active ? "border-[#8b5cf6] bg-[#f6f3ff]" : "border-slate-200 bg-white"
               }`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -84,7 +84,7 @@ export default function ModelsView({ onChanged }: { onChanged?: () => void }) {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-slate-800">{m.name}</span>
                     {m.active && (
-                      <span className="text-[10px] bg-[#10a37f] text-white rounded px-1.5 py-0.5">
+                      <span className="text-[10px] bg-[#8b5cf6] text-white rounded px-1.5 py-0.5">
                         当前使用
                       </span>
                     )}

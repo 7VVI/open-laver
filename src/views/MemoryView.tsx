@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { api, MemoryItem } from "../lib/api";
 
 const TYPE_COLOR: Record<string, string> = {
-  user: "bg-[#e8f5ee] text-[#10a37f]",
+  user: "bg-[#f0e9ff] text-[#8b5cf6]",
   feedback: "bg-amber-50 text-amber-600",
-  project: "bg-emerald-50 text-emerald-600",
+  project: "bg-violet-50 text-violet-600",
   reference: "bg-slate-100 text-slate-500",
 };
 

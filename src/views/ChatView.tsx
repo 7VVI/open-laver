@@ -14,6 +14,7 @@ import {
   SkillMeta,
 } from "../lib/api";
 import { useTauriEvent, EV } from "../lib/events";
+import agentIcon from "../assets/agent_icon_holo.png";
 
 interface ToolCall {
   id: string;
@@ -74,6 +75,8 @@ export default function ChatView({
   const [attachments, setAttachments] = useState<string[]>([]);
   // 消息队列: 当前任务运行时发送会排队，结束后自动发下一条
   const [queue, setQueue] = useState<{ text: string; attachments: string[] }[]>([]);
+  // 当前任务是否已结束: 复制按钮仅在任务结束后显示
+  const [taskDone, setTaskDone] = useState(true);
   const queueRef = useRef<{ text: string; attachments: string[] }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const streamingText = useRef("");
@@ -120,10 +123,11 @@ export default function ChatView({
     setMessages([]);
     streamingText.current = "";
     setRunning(false);
+    setTaskDone(true);
     setQueueBoth(() => []);
     let alive = true;
     // 切回正在执行的会话时，同步运行态，保证暂停键可用
-    api.isSessionRunning(sessionId).then((r) => { if (alive) setRunning(r); }).catch(() => {});
+    api.isSessionRunning(sessionId).then((r) => { if (alive) { setRunning(r); setTaskDone(!r); } }).catch(() => {});
     api.loadMessages(sessionId).then((raw: Message[]) => {
       if (!alive) return;
       const ui: UiMsg[] = [];
@@ -215,6 +219,7 @@ export default function ChatView({
     if (p.session_id !== sessionId) return;
     if (p.state === "running") {
       setRunning(true);
+      setTaskDone(false);
       return;
     }
     // idle: 定稿流式气泡，然后自动发送队列中的下一条
@@ -225,6 +230,7 @@ export default function ChatView({
       void sendComposed(next.text, next.attachments);
     } else {
       setRunning(false);
+      setTaskDone(true);
     }
   });
   useTauriEvent<{ session_id: string; todos: TodoItem[] }>(EV.TODO_UPDATE, (p) => {
@@ -236,6 +242,7 @@ export default function ChatView({
     setMessages((prev) => [...prev, { role: "user", text, attachments: atts }]);
     streamingText.current = "";
     setRunning(true);
+    setTaskDone(false);
     await api.sendMessage(sessionId, text, atts.length ? atts : undefined);
   };
 
@@ -319,7 +326,7 @@ export default function ChatView({
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
               <div className="max-w-3xl mx-auto space-y-5">
                 {messages.map((m, i) => (
-                  <MessageBubble key={i} msg={m} />
+                  <MessageBubble key={i} msg={m} taskDone={taskDone} />
                 ))}
               </div>
             </div>
@@ -330,11 +337,14 @@ export default function ChatView({
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center px-6">
             <div className="w-full max-w-2xl">
-              <div className="flex flex-col items-start mb-6">
-                <h1
-                  key={sessionId}
-                  className="greeting-shake text-[26px] font-bold text-slate-800 leading-tight text-left"
-                >
+              <div key={sessionId} className="greeting-enter greeting-hover flex flex-col items-start mb-6">
+                <img
+                  src={agentIcon}
+                  alt="Laver 智能体形象"
+                  className="greeting-avatar w-24 h-24 rounded-2xl object-cover mb-4 select-none"
+                  draggable={false}
+                />
+                <h1 className="text-[26px] font-bold text-slate-800 leading-tight text-left">
                   {greeting()}
                   <br />
                   有什么需要我帮你搞定的？
@@ -348,19 +358,30 @@ export default function ChatView({
 
       {todos.length > 0 && (
         <aside className="w-64 shrink-0 border-l border-slate-200 p-4 overflow-y-auto bg-[#fafbfc]">
-          <h3 className="text-xs font-semibold text-slate-500 uppercase mb-3">任务进度</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase">任务进度</h3>
+            <span className="text-[10px] text-slate-400">
+              {todos.filter((t) => t.status === "completed").length}/{todos.length} 完成
+            </span>
+          </div>
           <div className="space-y-2">
             {todos.map((t, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
-                <span className="mt-0.5">
-                  {t.status === "completed" ? "✅" : t.status === "in_progress" ? "🔄" : "⬜"}
+                <span className="mt-0.5 shrink-0">
+                  {t.status === "in_progress" ? (
+                    <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin" />
+                  ) : t.status === "completed" ? (
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="8" /></svg>
+                  )}
                 </span>
                 <span
                   className={
                     t.status === "completed"
                       ? "text-slate-400 line-through"
                       : t.status === "in_progress"
-                      ? "text-[#10a37f]"
+                      ? "text-[#8b5cf6]"
                       : "text-slate-600"
                   }
                 >
@@ -435,9 +456,9 @@ function Composer(props: {
           {props.queue.map((q, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 bg-[#f2fbf7] border border-[#cdeede] rounded-lg px-3 py-1.5 text-sm text-slate-600"
+              className="flex items-center gap-2 bg-[#f6f3ff] border border-[#e0d9fa] rounded-lg px-3 py-1.5 text-sm text-slate-600"
             >
-              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#10a37f]" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M12 8v4l3 2" />
                 <path d="M12 3a9 9 0 100 18 9 9 0 000-18z" />
               </svg>
@@ -633,7 +654,7 @@ function Composer(props: {
                     >
                       <button onClick={() => props.onSwitch(m.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
                         {m.active ? (
-                          <span className="text-[#10a37f] text-xs w-3 shrink-0">✓</span>
+                          <span className="text-[#8b5cf6] text-xs w-3 shrink-0">✓</span>
                         ) : (
                           <span className="w-3 shrink-0" />
                         )}
@@ -642,7 +663,7 @@ function Composer(props: {
                       </button>
                       <button
                         onClick={() => setEditModelId(editModelId === m.id ? null : m.id)}
-                        className={`ml-2 shrink-0 flex items-center gap-1 text-xs hover:text-[#10a37f] ${editModelId === m.id ? "text-[#10a37f]" : "text-slate-400"}`}
+                        className={`ml-2 shrink-0 flex items-center gap-1 text-xs hover:text-[#8b5cf6] ${editModelId === m.id ? "text-[#8b5cf6]" : "text-slate-400"}`}
                         title="配置上下文与思考模式"
                       >
                         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
@@ -672,7 +693,7 @@ function Composer(props: {
                         className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                       >
                         <span>{tier.label}</span>
-                        {editModel.context_window === tier.value && <span className="text-[#10a37f] text-xs">✓</span>}
+                        {editModel.context_window === tier.value && <span className="text-[#8b5cf6] text-xs">✓</span>}
                       </button>
                     ))}
                     <div className="border-t border-slate-100 my-1" />
@@ -680,7 +701,7 @@ function Composer(props: {
                       <span className="text-[11px] text-slate-400">思考模式</span>
                       <span
                         onClick={() => props.onRuntime(editModel.id, undefined, editModel.thinking === "off" ? "medium" : "off")}
-                        className={`w-9 h-5 rounded-full relative cursor-pointer transition ${editModel.thinking !== "off" ? "bg-[#10a37f]" : "bg-slate-300"}`}
+                        className={`w-9 h-5 rounded-full relative cursor-pointer transition ${editModel.thinking !== "off" ? "bg-[#8b5cf6]" : "bg-slate-300"}`}
                       >
                         <span className="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all" style={{ left: editModel.thinking !== "off" ? "18px" : "2px" }} />
                       </span>
@@ -693,7 +714,7 @@ function Composer(props: {
                           className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                         >
                           <span>{THINKING_LABELS[lv]}</span>
-                          {editModel.thinking === lv && <span className="text-[#10a37f] text-xs">✓</span>}
+                          {editModel.thinking === lv && <span className="text-[#8b5cf6] text-xs">✓</span>}
                         </button>
                       ))}
                     {!editModel.supports_thinking && (
@@ -718,7 +739,7 @@ function Composer(props: {
         ) : (
           <button
             onClick={props.onSend}
-            className="w-9 h-9 rounded-full bg-[#10a37f] hover:bg-[#0e9070] text-white flex items-center justify-center disabled:opacity-40"
+            className="w-9 h-9 rounded-full bg-[#8b5cf6] hover:bg-[#7c3aed] text-white flex items-center justify-center disabled:opacity-40"
             disabled={!props.input.trim() && props.attachments.length === 0}
             title={props.running ? "加入队列，任务结束后自动发送" : "发送"}
           >
@@ -766,7 +787,7 @@ function Chevron() {
 
 /* ---------------- 消息气泡 ---------------- */
 
-function MessageBubble({ msg }: { msg: UiMsg }) {
+function MessageBubble({ msg, taskDone }: { msg: UiMsg; taskDone: boolean }) {
   const mdRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState<null | "text" | "md">(null);
   const copy = async (kind: "text" | "md") => {
@@ -789,7 +810,7 @@ function MessageBubble({ msg }: { msg: UiMsg }) {
               {msg.attachments.map((p) => (
                 <span
                   key={p}
-                  className="flex items-center gap-1 bg-[#e8f5ee] text-[#0e7a5f] rounded-lg px-2 py-1 text-xs max-w-[220px]"
+                  className="flex items-center gap-1 bg-[#f0e9ff] text-[#6d28d9] rounded-lg px-2 py-1 text-xs max-w-[220px]"
                   title={p}
                 >
                   <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -816,12 +837,11 @@ function MessageBubble({ msg }: { msg: UiMsg }) {
         {msg.text && (
           <div ref={mdRef} className="text-[15px] text-slate-800 md leading-relaxed">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
-            {msg.streaming && <span className="inline-block w-2 h-4 bg-[#10a37f] animate-pulse ml-0.5 align-middle" />}
           </div>
         )}
         {msg.tools && msg.tools.length > 0 && <ToolActivity tools={msg.tools} />}
-        {/* AI 回复末尾: 复制文本 / 复制 Markdown */}
-        {msg.text && !msg.streaming && (
+        {/* AI 回复末尾: 复制文本 / 复制 Markdown (任务结束后才显示) */}
+        {msg.text && !msg.streaming && taskDone && (
           <div className="flex items-center gap-1 pt-0.5">
             <button
               onClick={() => copy("text")}
@@ -829,7 +849,7 @@ function MessageBubble({ msg }: { msg: UiMsg }) {
               className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
             >
               {copied === "text" ? (
-                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#10a37f]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               ) : (
                 <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
               )}
@@ -840,7 +860,7 @@ function MessageBubble({ msg }: { msg: UiMsg }) {
               className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
             >
               {copied === "md" ? (
-                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#10a37f]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               ) : (
                 <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor"><path d="M14.85 3H1.15C.52 3 0 3.52 0 4.15v7.69C0 12.48.52 13 1.15 13h13.69c.64 0 1.15-.52 1.15-1.15v-7.7C16 3.52 15.48 3 14.85 3zM9 11H7V8L5.5 9.92 4 8v3H2V5h2l1.5 2L7 5h2v6zm2.99.5L9.5 8H11V5h2v3h1.5l-2.51 3.5z" /></svg>
               )}
@@ -884,7 +904,7 @@ function toolLabel(t: ToolCall): string {
 
 function ToolStatusIcon({ status }: { status: "running" | "ok" | "err" }) {
   if (status === "running")
-    return <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#10a37f] animate-spin shrink-0" />;
+    return <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />;
   if (status === "err")
     return (
       <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
@@ -904,9 +924,9 @@ function ToolActivity({ tools }: { tools: ToolCall[] }) {
         className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 py-0.5"
       >
         {running ? (
-          <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#10a37f] animate-spin" />
+          <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin" />
         ) : (
-          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#10a37f]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
         )}
         <span>{running ? "处理中…" : `已完成 ${tools.length} 步`}</span>
         <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 transition-transform ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
