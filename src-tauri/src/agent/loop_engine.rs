@@ -53,18 +53,11 @@ pub async fn run_turn(
         },
     );
 
-    // 追加用户输入 (UserPromptSubmit: 注入 todo 提醒等)
+    // 追加用户输入 (原始内容存储，reminder 仅在发送给 LLM 时注入，不污染历史)
     {
         let mut st = session.state.lock().await;
-        let mut prompt = user_input.clone();
-        // 连续多轮未更新 todo 则提醒
-        if !st.todos.is_empty() && st.rounds_since_todo >= TODO_REMINDER_ROUNDS {
-            prompt = format!(
-                "<reminder>别忘了用 todo_write 更新任务进度</reminder>\n{prompt}"
-            );
-        }
         if !user_input.is_empty() {
-            st.messages.push(Message::user_text(prompt));
+            st.messages.push(Message::user_text(user_input.clone()));
         }
     }
 
@@ -190,7 +183,21 @@ pub async fn run_agent_loop(
         };
 
         // --- 6. LLM 调用 (带 recovery) ---
-        let messages_snapshot = { session.state.lock().await.messages.clone() };
+        // 构建 LLM 消息快照: 若需要 todo 提醒，仅在快照中注入（不污染存储的历史消息）
+        let messages_snapshot = {
+            let st = session.state.lock().await;
+            let mut msgs = st.messages.clone();
+            if !st.todos.is_empty() && st.rounds_since_todo >= TODO_REMINDER_ROUNDS {
+                if let Some(last) = msgs.last_mut() {
+                    if let Some(ContentBlock::Text { text }) = last.content.first_mut() {
+                        *text = format!(
+                            "<reminder>别忘了用 todo_write 更新任务进度</reminder>\n{text}"
+                        );
+                    }
+                }
+            }
+            msgs
+        };
         let max_tokens = if recovery.has_escalated {
             MAX_OUTPUT_TOKENS_ESCALATED
         } else {

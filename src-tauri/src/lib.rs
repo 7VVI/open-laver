@@ -78,6 +78,8 @@ pub fn run() {
             gateway::commands::resolve_approval,
             gateway::commands::get_workspace,
             gateway::commands::set_workspace,
+            gateway::commands::list_dir_tree,
+            gateway::commands::open_path,
             gateway::commands::list_models,
             gateway::commands::save_model,
             gateway::commands::delete_model,

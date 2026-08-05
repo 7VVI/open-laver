@@ -19,6 +19,13 @@ export interface Message {
   content: ContentBlock[];
 }
 
+export interface DirEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  children?: DirEntry[];
+}
+
 export interface SessionDto {
   id: string;
   title: string;
@@ -127,6 +134,8 @@ export const api = {
 
   getWorkspace: () => invoke<{ workspace: string }>("get_workspace"),
   setWorkspace: (path: string) => invoke("set_workspace", { path }),
+  listDirTree: (path: string) => invoke<DirEntry[]>("list_dir_tree", { path }),
+  openPath: (path: string) => invoke("open_path", { path }),
 
   // 模型管理
   listModels: () => invoke<ModelProfileDto[]>("list_models"),

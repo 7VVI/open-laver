@@ -312,6 +312,86 @@ pub async fn set_workspace(state: St<'_>, path: String) -> Result<(), String> {
     Ok(())
 }
 
+// ---------------- 工作目录文件树 ----------------
+
+#[derive(Serialize)]
+pub struct DirEntryDto {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub children: Option<Vec<DirEntryDto>>,
+}
+
+/// 递归列出目录树 (限制深度与条目数，跳过常见无关目录)
+#[tauri::command]
+pub async fn list_dir_tree(path: String) -> Result<Vec<DirEntryDto>, String> {
+    const SKIP: &[&str] = &[
+        "node_modules", ".git", "target", "dist", ".idea", ".next", ".cache",
+        "__pycache__", ".venv", "venv", ".vscode", "build", "coverage",
+    ];
+    fn walk(dir: &std::path::Path, depth: usize) -> Vec<DirEntryDto> {
+        if depth > 4 {
+            return vec![];
+        }
+        let mut out = vec![];
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return out;
+        };
+        let mut items: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+        // 目录优先，再按名称排序
+        items.sort_by_key(|e| {
+            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            (!is_dir, e.file_name().to_string_lossy().to_lowercase())
+        });
+        for e in items.iter().take(300) {
+            let name = e.file_name().to_string_lossy().to_string();
+            if SKIP.contains(&name.as_str()) {
+                continue;
+            }
+            let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            let path = e.path();
+            if is_dir {
+                out.push(DirEntryDto {
+                    name: name.clone(),
+                    path: path.to_string_lossy().to_string(),
+                    is_dir: true,
+                    children: Some(walk(&path, depth + 1)),
+                });
+            } else {
+                out.push(DirEntryDto {
+                    name,
+                    path: path.to_string_lossy().to_string(),
+                    is_dir: false,
+                    children: None,
+                });
+            }
+        }
+        out
+    }
+    let root = std::path::Path::new(&path);
+    if !root.is_dir() {
+        return Err("路径不是目录".into());
+    }
+    Ok(walk(root, 0))
+}
+
+/// 在系统文件管理器中打开/定位路径 (Windows: explorer /select 打开目录或定位文件)
+#[tauri::command]
+pub async fn open_path(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(format!("/select,{path}"))
+            .spawn()
+            .map_err(|e| format!("打开失败: {e}"))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("open").arg(&path).spawn();
+    }
+    Ok(())
+}
+
 /// 列出所有模型档案 (含是否已配密钥、是否活跃)
 #[tauri::command]
 pub async fn list_models(state: St<'_>) -> Result<Vec<ModelProfileDto>, String> {

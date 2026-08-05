@@ -68,6 +68,8 @@ export default function App() {
   // 设置弹窗 (含模型管理)
   const [showSettings, setShowSettings] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState("system");
+  // 右侧面板 (任务进度 + 工作目录文件树) 折叠状态
+  const [showRightPanel, setShowRightPanel] = useState(true);
   // 外部注入到对话输入框的草稿 (如: 通过助手创建技能)
   const [chatDraft, setChatDraft] = useState<{ text: string; key: number } | null>(null);
 
@@ -197,6 +199,8 @@ export default function App() {
         showAppMenu={showAppMenu}
         setShowAppMenu={setShowAppMenu}
         onOpenSearch={() => setShowSearch(true)}
+        rightPanelOpen={showRightPanel}
+        onToggleRightPanel={() => setShowRightPanel((v) => !v)}
         onCheckUpdate={() =>
           setInfoDialog({ title: "检查更新", body: "当前已是最新版本（v0.1.0）。" })
         }
@@ -310,6 +314,7 @@ export default function App() {
               onContentChange={setActiveHasContent}
               onNotice={pushNotice}
               draft={chatDraft}
+              showRightPanel={showRightPanel}
             />
           ) : (
             <ChatWelcome onStart={newSession} />
@@ -594,6 +599,8 @@ function TopBar(props: {
   onCheckUpdate: () => void;
   onFeedback: () => void;
   onAbout: () => void;
+  rightPanelOpen: boolean;
+  onToggleRightPanel: () => void;
 }) {
   const iconBtn =
     "w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200/70";
@@ -673,6 +680,16 @@ function TopBar(props: {
 
       {/* 窗口控制 */}
       <div className="flex items-center gap-0.5">
+        <button
+          className={`${iconBtn} ${props.rightPanelOpen ? "text-[#8b5cf6]" : ""}`}
+          onClick={props.onToggleRightPanel}
+          title={props.rightPanelOpen ? "折叠右侧面板" : "展开右侧面板"}
+        >
+          <svg viewBox="0 0 24 24" className="w-[16px] h-[16px]" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M15 4v16" />
+          </svg>
+        </button>
         <button
           className={iconBtn}
           onClick={() => getCurrentWindow().minimize()}

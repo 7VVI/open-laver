@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -12,6 +12,7 @@ import {
   CONTEXT_TIERS,
   formatContext,
   SkillMeta,
+  DirEntry,
 } from "../lib/api";
 import { useTauriEvent, EV } from "../lib/events";
 import agentIcon from "../assets/agent_icon_holo.png";
@@ -61,6 +62,7 @@ export default function ChatView({
   onContentChange,
   onNotice,
   draft,
+  showRightPanel,
 }: {
   sessionId: string;
   onAddModel: () => void;
@@ -69,6 +71,7 @@ export default function ChatView({
   onContentChange?: (hasContent: boolean) => void;
   onNotice?: (level: string, text: string) => void;
   draft?: { text: string; key: number } | null;
+  showRightPanel: boolean;
 }) {
   const [messages, setMessages] = useState<UiMsg[]>([]);
   const [input, setInput] = useState("");
@@ -85,6 +88,13 @@ export default function ChatView({
   const queueRef = useRef<{ text: string; attachments: string[] }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const streamingText = useRef("");
+  // 状态兜底类更新 (任务结束 idle) 不触发自动滚动，避免输出结束后内容突然跳动
+  const skipScrollRef = useRef(false);
+  // 用户是否位于消息流底部: 仅在底部时新内容才自动滚动，上翻历史时保持不动
+  const nearBottomRef = useRef(true);
+  // 程序自动滚动标记: 区分“程序滚动”与“用户手动滚动”，
+  // 避免自动滚动后触发 scroll 事件误判 nearBottomRef
+  const autoScrollRef = useRef(false);
   // 每个会话独立保存输入草稿 (切换会话时不串提)
   const draftsRef = useRef<Record<string, string>>({});
   const inputRef = useRef(input);
@@ -95,6 +105,24 @@ export default function ChatView({
   const hasMessages = messages.length > 0;
   const lastMsg = messages[messages.length - 1];
   const streamingNow = !!lastMsg && lastMsg.role === "assistant" && !!lastMsg.streaming;
+  // 处理中指示器：延迟出现 + 即时消失
+  // - 任务进行中超过 500ms 才显示（过滤掉收尾窗口的瞬间闪烁）
+  // - 一旦条件不满足立即隐藏（无延迟）
+  const [showProc, setShowProc] = useState(false);
+  const showProcRef = useRef(false);
+  useEffect(() => {
+    const shouldShow = running && !streamingNow;
+    showProcRef.current = shouldShow;
+    if (shouldShow) {
+      // 延迟出现：收尾窗口短于 500ms 时根本不显示
+      const t = setTimeout(() => {
+        if (showProcRef.current) setShowProc(true);
+      }, 500);
+      return () => clearTimeout(t);
+    }
+    // 即时消失
+    setShowProc(false);
+  }, [running, streamingNow]);
 
   const setQueueBoth = (updater: (q: { text: string; attachments: string[] }[]) => { text: string; attachments: string[] }[]) => {
     queueRef.current = updater(queueRef.current);
@@ -158,15 +186,22 @@ export default function ChatView({
         const text = blocks.filter((x) => x.kind === "text").map((x) => x.text).join("\n\n");
         const tools = blocks.flatMap((x) => (x.kind === "tools" ? x.tools : []));
         const results = m.content.filter((b) => b.type === "tool_result");
-        if (results.length && ui.length) {
-          const last = ui[ui.length - 1];
+        if (results.length) {
+          // tool_result 可能因上下文压缩(compact)与 tool_use 不再相邻：
+          // 先匹配本条消息内的工具，再回退匹配历史消息中的工具 (从后往前)
           for (const r of results) {
-            for (const blk of last.blocks ?? []) {
-              if (blk.kind === "tools") {
-                const tc = blk.tools.find((t) => t.id === r.tool_use_id);
-                if (tc) { tc.output = r.content; tc.ok = !r.is_error; break; }
+            let tc = tools.find((t) => t.id === r.tool_use_id);
+            if (!tc) {
+              for (let i = ui.length - 1; i >= 0 && !tc; i--) {
+                for (const blk of ui[i].blocks ?? []) {
+                  if (blk.kind === "tools") {
+                    tc = blk.tools.find((t) => t.id === r.tool_use_id);
+                    if (tc) break;
+                  }
+                }
               }
             }
+            if (tc) { tc.output = r.content; tc.ok = !r.is_error; }
           }
         }
         if (!blocks.length) continue;
@@ -190,8 +225,33 @@ export default function ChatView({
     return () => { alive = false; };
   }, [sessionId]);
 
+  // 监听滚动位置，记录用户是否停留在底部 (阈值 80px)
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    nearBottomRef.current = true;
+    const onScroll = () => {
+      // 程序自动滚动不更新 nearBottomRef，避免 ReactMarkdown 回流后误判
+      if (autoScrollRef.current) return;
+      nearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [hasMessages]);
+
+  useEffect(() => {
+    if (skipScrollRef.current) {
+      skipScrollRef.current = false;
+      return;
+    }
+    // 仅在用户位于底部时自动贴底；流式输出期间高频增量也可靠跟随
+    if (!nearBottomRef.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    autoScrollRef.current = true;
+    el.scrollTop = el.scrollHeight;
+    // 下一帧重置标记，允许用户滚动事件恢复判定
+    requestAnimationFrame(() => { autoScrollRef.current = false; });
   }, [messages]);
 
   useTauriEvent<{ session_id: string; text: string }>(EV.DELTA, (p) => {
@@ -218,6 +278,7 @@ export default function ChatView({
   });
   useTauriEvent<{ session_id: string; id: string; name: string; input: any }>(EV.TOOL_START, (p) => {
     if (p.session_id !== sessionId) return;
+    // streamingText 只跟踪当前轮的文本段，不继承历史轮的文本（旧文本已在 blocks 中）
     streamingText.current = "";
     setMessages((prev) => {
       const copy = [...prev];
@@ -230,9 +291,6 @@ export default function ChatView({
         last = { role: "assistant", text: "", blocks: [], streaming: true };
         copy.push(last);
       } else {
-        // 复用气泡: 保留已有文本作为后续流式文本的基础，防止流式增量覆盖已定稿文本
-        streamingText.current =
-          last.blocks.filter((b) => b.kind === "text").map((b) => b.text).join("\n\n") || "";
         last.streaming = true;
       }
       // 工具步骤按到达顺序追加为 tools 块（或并入末尾 tools 块）
@@ -269,19 +327,22 @@ export default function ChatView({
       const copy = [...prev];
       const last = copy[copy.length - 1];
       if (last && last.role === "assistant") {
-        // 定稿当前助手气泡: 文本按到达顺序追加/合并到末尾 text 块
         const blocks = [...(last.blocks ?? [])];
         if (p.text && p.text.trim()) {
           const b = blocks[blocks.length - 1];
           if (b && b.kind === "text") {
-            if (p.text !== b.text) b.text = b.text ? b.text + "\n\n" + p.text : p.text;
+            // 定稿: 若文本相同或互为子串则替换，避免重复追加
+            if (b.text === p.text || b.text.endsWith(p.text) || p.text.endsWith(b.text)) {
+              b.text = p.text;
+            } else {
+              b.text = b.text + "\n\n" + p.text;
+            }
           } else {
             blocks.push({ kind: "text", text: p.text });
           }
         }
         copy[copy.length - 1] = { ...last, blocks, streaming: false };
       } else if (p.text && p.text.trim()) {
-        // 最后一条不是助手气泡 (例如错误消息、无流式回复) —— 新增一条
         copy.push({
           role: "assistant",
           text: p.text,
@@ -299,8 +360,24 @@ export default function ChatView({
       setTaskDone(false);
       return;
     }
-    // idle: 定稿流式气泡，然后自动发送队列中的下一条
-    setMessages((prev) => prev.map((m) => (m.streaming ? { ...m, streaming: false } : m)));
+    // idle: 定稿流式气泡，然后自动发送队列中的下一条；
+    // 同时把未收到结果事件的工具兜底标记为完成，避免 icon 一直显示处理中
+    // (兜底属状态同步，跳过自动滚动，避免输出结束后内容突然跳动)
+    skipScrollRef.current = true;
+    setMessages((prev) =>
+      prev.map((m) => {
+        const blocks = m.blocks?.map((b) =>
+          b.kind === "tools"
+            ? { ...b, tools: b.tools.map((t) => (t.ok === undefined ? { ...t, ok: true } : t)) }
+            : b
+        );
+        return m.streaming
+          ? { ...m, blocks, streaming: false }
+          : blocks
+          ? { ...m, blocks }
+          : m;
+      })
+    );
     if (queueRef.current.length > 0) {
       const next = queueRef.current[0];
       setQueueBoth((q) => q.slice(1));
@@ -404,10 +481,9 @@ export default function ChatView({
               <div ref={scrollRef} className="h-full overflow-y-auto px-6 py-6">
                 <div className="max-w-3xl mx-auto space-y-5">
                   {messages.map((m, i) => (
-                    <MessageBubble key={i} msg={m} taskDone={taskDone} />
+                    <MessageBubble key={i} msg={m} taskDone={taskDone} todos={todos} workspace={workspace} />
                   ))}
-                  {todos.length > 0 && <TodoPanel todos={todos} />}
-                  {running && !streamingNow && (
+                  {showProc && (
                     <div className="flex items-center gap-2 text-sm text-slate-400">
                       <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />
                       处理中
@@ -459,40 +535,13 @@ export default function ChatView({
         )}
       </div>
 
-      {todos.length > 0 && (
+      {showRightPanel && (
         <aside className="w-64 shrink-0 border-l border-slate-200 p-4 overflow-y-auto bg-[#fafbfc]">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-slate-500 uppercase">任务进度</h3>
-            <span className="text-[10px] text-slate-400">
-              {todos.filter((t) => t.status === "completed").length}/{todos.length} 完成
-            </span>
-          </div>
-          <div className="space-y-2">
-            {todos.map((t, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm">
-                <span className="mt-0.5 shrink-0">
-                  {t.status === "in_progress" ? (
-                    <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin" />
-                  ) : t.status === "completed" ? (
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                  ) : (
-                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="8" /></svg>
-                  )}
-                </span>
-                <span
-                  className={
-                    t.status === "completed"
-                      ? "text-slate-400 line-through"
-                      : t.status === "in_progress"
-                      ? "text-[#8b5cf6]"
-                      : "text-slate-600"
-                  }
-                >
-                  {t.content}
-                </span>
-              </div>
-            ))}
-          </div>
+          {/* 工作目录文件树: 右键可添加到对话上下文或复制路径 */}
+          <FileTree
+            workspace={workspace}
+            onAddAttachment={(p) => setAttachments((prev) => (prev.includes(p) ? prev : [...prev, p]))}
+          />
         </aside>
       )}
     </div>
@@ -892,10 +941,35 @@ function Chevron() {
 
 /* ---------------- 消息气泡 ---------------- */
 
-function MessageBubble({ msg, taskDone }: { msg: UiMsg; taskDone: boolean }) {
+// 把文本中指向工作区的绝对路径转为可点击链接（显示相对路径，点击打开目录）
+function pathToLinks(text: string, workspace: string): string {
+  if (!workspace) return text;
+  const ws = workspace.replace(/[\\/]+$/, "").toLowerCase();
+  // 匹配 Windows/Unix 绝对路径：允许被反引号包裹（行内代码），但生成链接时剥掉反引号，
+  // 避免链接仍被包在行内代码里导致无法解析
+  const re = /`*[A-Za-z]:[\\/][^\s"'<>|?*，。；、：（）()【】`]+`*/g;
+  let changed = false;
+  const out = text.replace(re, (raw) => {
+    const abs = raw.replace(/`/g, "");
+    const norm = abs.replace(/[\\/]+/g, "\\");
+    if (!norm.toLowerCase().startsWith(ws)) return raw;
+    const rel = norm.slice(ws.length).replace(/^[\\/]+/, "");
+    changed = true;
+    // 使用 open: 协议 (opaque 形式，编码后任意字符均合法)
+    return `[${rel}](open:${encodeURIComponent(abs)})`;
+  });
+  return changed ? out : text;
+}
+
+function MessageBubble({ msg, taskDone, todos, workspace }: { msg: UiMsg; taskDone: boolean; todos: TodoItem[]; workspace: string }) {
   const [copied, setCopied] = useState<null | "text" | "md">(null);
   const textBlocks = msg.blocks.filter((b) => b.kind === "text").map((b) => b.text);
   const hasText = textBlocks.length > 0;
+  // 待办折叠行只显示在最后一个“更新待办”工具步骤下方，位置固定不随新内容移动
+  const lastTodoIdx = msg.blocks.reduce(
+    (acc, b, i) => (b.kind === "tools" && b.tools.some((t) => t.name === "todo_write") ? i : acc),
+    -1
+  );
   const copy = async (kind: "text" | "md") => {
     const val = textBlocks.join("\n\n");
     try {
@@ -943,16 +1017,46 @@ function MessageBubble({ msg, taskDone }: { msg: UiMsg; taskDone: boolean }) {
         {/* 按到达顺序渲染内容块: 文本与工具步骤交替展示，保持处理顺序 */}
         {msg.blocks.map((b, i) =>
           b.kind === "tools" ? (
-            <ToolActivity key={i} tools={b.tools} />
+            <Fragment key={i}>
+              <ToolActivity tools={b.tools} />
+              {i === lastTodoIdx && todos.length > 0 && <TodoPanel todos={todos} />}
+            </Fragment>
           ) : (
             <div key={i} className="text-[15px] text-slate-800 md leading-relaxed">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{b.text}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                urlTransform={(url) => url}
+                components={{
+                  a: ({ href, children }) => {
+                    // 工作区文件链接: 蓝色显示，点击在系统文件管理器中打开/定位
+                    if (href?.startsWith("open:")) {
+                      const p = decodeURIComponent(href.slice(5));
+                      return (
+                        <a
+                          href="#"
+                          className="text-blue-600 hover:underline cursor-pointer break-all"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void api.openPath(p);
+                          }}
+                        >
+                          {children}
+                        </a>
+                      );
+                    }
+                    return <a href={href}>{children}</a>;
+                  },
+                }}
+              >
+                {pathToLinks(b.text, workspace)}
+              </ReactMarkdown>
             </div>
           )
         )}
-        {/* AI 回复末尾: 复制文本 / 复制 Markdown (任务结束后才显示) */}
+        {/* AI 回复末尾: 复制文本 / 复制 Markdown (任务结束后才显示，淡入避免突兀) */}
         {hasText && !msg.streaming && taskDone && (
-          <div className="flex items-center gap-1 pt-0.5">
+          <div className="flex items-center gap-1 pt-0.5 fade-in">
             <button
               onClick={() => copy("text")}
               title="复制文本"
@@ -988,42 +1092,178 @@ function TodoPanel({ todos }: { todos: TodoItem[] }) {
   const [open, setOpen] = useState(false);
   const done = todos.filter((t) => t.status === "completed").length;
   return (
-    <div className="bg-[#fafbff] border border-[#e0d9fa] rounded-xl px-4 py-3">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-1.5">
-        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h11M9 12h11M9 18h11" /><path d="M3 6l1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2" /></svg>
-        <span className="text-xs font-semibold text-slate-600">待办 {todos.length} 项</span>
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 py-0.5"
+      >
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h11M9 12h11M9 18h11" /><path d="M3 6l1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2" /></svg>
+        <span className="text-sm">更新待办 {todos.length} 项</span>
         <span className="text-[10px] text-slate-400 ml-auto">{done}/{todos.length} 完成</span>
-        <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+        <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open && (
-        <div className="mt-2 pt-2 border-t border-[#e0d9fa]/70 space-y-1.5">
+        <div className="mt-1 ml-[7px] border-l-2 border-slate-100 pl-3 space-y-1.5">
           {todos.map((t, i) => (
             <div key={i} className="flex items-start gap-2 text-sm">
-            <span className="mt-0.5 shrink-0">
-              {t.status === "in_progress" ? (
-                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin" />
-              ) : t.status === "completed" ? (
-                <span className="inline-flex w-3.5 h-3.5 rounded-full bg-[#8b5cf6] items-center justify-center">
-                  <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-                </span>
-              ) : (
-                <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-300" />
-              )}
-            </span>
-            <span
-              className={
-                t.status === "completed"
-                  ? "text-slate-400 line-through"
-                  : t.status === "in_progress"
-                  ? "text-[#8b5cf6] font-medium"
-                  : "text-slate-600"
-              }
+              <span className="mt-0.5 shrink-0">
+                {t.status === "in_progress" ? (
+                  <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin" />
+                ) : t.status === "completed" ? (
+                  <span className="inline-flex w-3.5 h-3.5 rounded-full bg-[#8b5cf6] items-center justify-center">
+                    <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                  </span>
+                ) : (
+                  <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-300" />
+                )}
+              </span>
+              <span
+                className={
+                  t.status === "completed"
+                    ? "text-slate-400 line-through"
+                    : t.status === "in_progress"
+                    ? "text-[#8b5cf6] font-medium"
+                    : "text-slate-600"
+                }
+              >
+                {t.content}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- 工作目录文件树 ---------------- */
+
+function FileTree({
+  workspace,
+  onAddAttachment,
+}: {
+  workspace: string;
+  onAddAttachment: (path: string) => void;
+}) {
+  const [tree, setTree] = useState<DirEntry[] | null>(null);
+  // 右键菜单: 位置 + 目标节点
+  const [menu, setMenu] = useState<{ x: number; y: number; path: string; isDir: boolean } | null>(null);
+  useEffect(() => {
+    setTree(null);
+    if (!workspace) return;
+    api.listDirTree(workspace).then(setTree).catch(() => setTree(null));
+  }, [workspace]);
+  // 点击/右键其他区域时关闭菜单
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+    };
+  }, [menu]);
+  const handleContext = (e: ReactMouseEvent, node: DirEntry) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({
+      x: Math.min(e.clientX, window.innerWidth - 170),
+      y: Math.min(e.clientY, window.innerHeight - 96),
+      path: node.path,
+      isDir: node.is_dir,
+    });
+  };
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-slate-500 uppercase mb-2">工作目录</h3>
+      {!workspace ? (
+        <div className="text-xs text-slate-400">未选择工作目录</div>
+      ) : !tree ? (
+        <div className="text-xs text-slate-400">加载中…</div>
+      ) : tree.length === 0 ? (
+        <div className="text-xs text-slate-400">空目录</div>
+      ) : (
+        <div className="space-y-0.5">
+          {tree.map((n) => (
+            <TreeNode key={n.path} node={n} depth={0} onContext={handleContext} />
+          ))}
+        </div>
+      )}
+      {/* 右键菜单 */}
+      {menu && (
+        <div
+          className="fixed z-50 bg-white border border-slate-200 rounded-lg shadow-lg py-1 min-w-[150px]"
+          style={{ left: menu.x, top: menu.y }}
+        >
+          {!menu.isDir && (
+            <button
+              onClick={() => {
+                onAddAttachment(menu.path);
+                setMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
             >
-              {t.content}
-            </span>
-          </div>
-        ))}
-      </div>
+              添加到对话上下文
+            </button>
+          )}
+          <button
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(menu.path);
+              } catch {
+                /* 忽略复制失败 */
+              }
+              setMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+          >
+            复制路径
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TreeNode({
+  node,
+  depth,
+  onContext,
+}: {
+  node: DirEntry;
+  depth: number;
+  onContext: (e: ReactMouseEvent, node: DirEntry) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => node.is_dir && setOpen((v) => !v)}
+        onContextMenu={(e) => onContext(e, node)}
+        className={`w-full flex items-center gap-1 text-xs py-0.5 rounded hover:bg-slate-100 ${node.is_dir ? "text-slate-600" : "text-slate-500"}`}
+        style={{ paddingLeft: depth * 14 }}
+        title={node.path}
+      >
+        {node.is_dir ? (
+          <>
+            <svg viewBox="0 0 24 24" className={`w-2.5 h-2.5 text-slate-400 transition-transform shrink-0 ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+          </>
+        ) : (
+          <>
+            <span className="w-2.5 shrink-0" />
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></svg>
+          </>
+        )}
+        <span className="truncate">{node.name}</span>
+      </button>
+      {node.is_dir && open && node.children && node.children.length > 0 && (
+        <div>
+          {node.children.map((c) => (
+            <TreeNode key={c.path} node={c} depth={depth + 1} onContext={onContext} />
+          ))}
+        </div>
       )}
     </div>
   );
