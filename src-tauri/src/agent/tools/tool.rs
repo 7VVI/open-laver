@@ -1,4 +1,4 @@
-//! s02 工具抽象 — Tool trait + 分发注册表 (查表替代硬编码)
+//! 工具抽象 — Tool trait + 分发注册表 (查表替代硬编码)
 
 use async_trait::async_trait;
 use serde_json::Value;

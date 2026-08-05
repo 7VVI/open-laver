@@ -1,4 +1,4 @@
-//! s19 MCP 配置 — mcpServers.json (command/args/env)
+//! MCP 配置 — mcpServers.json (command/args/env)
 
 use std::collections::HashMap;
 use std::path::Path;

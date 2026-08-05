@@ -1,4 +1,4 @@
-//! s03 权限引擎 — 三道闸门: DENY_LIST 硬拒绝 -> 规则匹配 -> 用户审批
+//! 权限引擎 — 三道闸门: DENY_LIST 硬拒绝 -> 规则匹配 -> 用户审批
 
 use serde_json::Value;
 
@@ -111,11 +111,11 @@ pub fn evaluate(tool: &str, input: &Value, ctx: &ToolCtx) -> Decision {
             Decision::Allow
         }
         "remove_worktree" => {
-            // s18: 有未提交改动的删除由工具自身把关；此处统一 ask
+            // 有未提交改动的删除由工具自身把关；此处统一 ask
             Decision::Ask("删除 git worktree".into())
         }
         _ if tool.starts_with("mcp__") => {
-            // s19: 外部 MCP 工具默认询问 (描述带 destructive 标注的更应询问)
+            // 外部 MCP 工具默认询问 (描述带 destructive 标注的更应询问)
             Decision::Ask(format!("调用外部 MCP 工具 {tool}"))
         }
         _ => Decision::Allow,

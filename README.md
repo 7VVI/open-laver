@@ -2,9 +2,9 @@
 
 基于 **Tauri 2 + Rust + React** 的桌面办公 Agent 智能体。
 
-完整实现了 [learn.shareai.run](https://learn.shareai.run/zh/) 教程 **s01–s20** 全部 20 章的 Agent Harness 机制，并借鉴悟空 Agent 的模块划分（loop_engine / real_tools / memory / cron / skills / mcp / gateway / model_provider / process_manager）。
+完整实现了 Agent Harness 的各个核心机制（主循环 / 工具 / 权限 / Hooks / 技能 / 压缩 / 记忆 / 任务图 / cron / 团队 / worktree / MCP），并借鉴悟空 Agent 的模块划分（loop_engine / real_tools / memory / cron / skills / mcp / gateway / model_provider / process_manager）。
 
-设计哲学与教程一致：**循环只有一个，机制分层叠加**。
+设计哲学：**循环只有一个，机制分层叠加**。
 
 ---
 
@@ -32,9 +32,9 @@ npm run tauri build         # 打包 Windows 安装包
 ```
 src-tauri/src/
 ├── main.rs / lib.rs          入口，注册 Tauri 命令 + AppState + 后台工作线程
-├── constants.rs              全局阈值常量 (与教程一致)
+├── constants.rs              全局阈值常量
 ├── state.rs                  AppState — 串联所有子系统
-├── workers.rs                s14 cron 调度器 tick + 队列交付
+├── workers.rs                cron 调度器 tick + 队列交付
 ├── seed.rs                   首次运行播种内置办公技能
 ├── llm/                      多提供商抽象 (悟空 shared/llm)
 │   ├── provider.rs           trait LlmProvider + 工厂
@@ -44,24 +44,24 @@ src-tauri/src/
 │   ├── sse.rs                SSE 流解析 (UTF-8 安全)
 │   └── credentials.rs        API Key -> Windows 凭据管理器 (keyring)
 ├── agent/
-│   ├── loop_engine.rs        s01+s20 主循环 (9 步挂载顺序)
+│   ├── loop_engine.rs        主循环 (9 步挂载顺序)
 │   ├── session.rs            会话状态 + 管理器
 │   ├── ctx.rs                ToolCtx + safe_path 工作区校验
-│   ├── recovery.rs           s11 错误恢复状态机
-│   ├── subagent.rs           s06 子代理
-│   ├── tools/                s02 工具注册表 + 全部内置工具
-│   ├── permission/           s03 三闸门权限 + 审批经纪人 + 审批记忆
-│   ├── hooks/                s04 hook 触发点
-│   ├── skills/               s07 技能扫描与加载
-│   ├── compact/              s08 四层压缩管线
-│   ├── memory/               s09 记忆服务 + 提取/合并
-│   └── prompt/               s10 分段 system prompt 组装 + 缓存
-├── tasks/                    s12 任务图 (文件持久化 + 文件锁)
-├── background/               s13 后台任务管理器
-├── cron/                     s14 croner 调度器
-├── team/                     s15-s17 信箱 / 协议 / 队友生命周期
-├── worktree/                 s18 git worktree 隔离
-├── mcp/                      s19 stdio JSON-RPC 客户端 + 工具池
+│   ├── recovery.rs           错误恢复状态机
+│   ├── subagent.rs           子代理
+│   ├── tools/                工具注册表 + 全部内置工具
+│   ├── permission/           三闸门权限 + 审批经纪人 + 审批记忆
+│   ├── hooks/                hook 触发点
+│   ├── skills/               技能扫描与加载
+│   ├── compact/              四层压缩管线
+│   ├── memory/               记忆服务 + 提取/合并
+│   └── prompt/               分段 system prompt 组装 + 缓存
+├── tasks/                    任务图 (文件持久化 + 文件锁)
+├── background/               后台任务管理器
+├── cron/                     croner 调度器
+├── team/                     信箱 / 协议 / 队友生命周期
+├── worktree/                 git worktree 隔离
+├── mcp/                      stdio JSON-RPC 客户端 + 工具池
 ├── persistence/              SQLite (会话/cron/记忆/设置)
 └── gateway/                  Tauri 命令层 + 事件流 (悟空 agui_stream)
 
@@ -73,45 +73,18 @@ src/ (React + TS)
 
 ---
 
-## s01–s20 机制映射
-
-| 章节 | 机制 | 实现位置 |
-| --- | --- | --- |
-| s01 | The Agent Loop | `agent/loop_engine.rs` (while 循环) |
-| s02 | Tool Use (分发表) | `agent/tools/registry.rs` + `tool.rs` |
-| s03 | Permission (三闸门) | `agent/permission/engine.rs` + `approval.rs` |
-| s04 | Hooks (四触发点) | `agent/hooks/registry.rs` + loop_engine 挂载 |
-| s05 | TodoWrite | `agent/tools/planning.rs` (TodoWriteTool) + 提醒计数 |
-| s06 | Subagent | `agent/subagent.rs` + `tools/team_tools.rs` (TaskTool) |
-| s07 | Skill Loading (两层) | `agent/skills/registry.rs` + LoadSkillTool |
-| s08 | Context Compact (四层) | `agent/compact/pipeline.rs` |
-| s09 | Memory | `agent/memory/service.rs` + `extractor.rs` |
-| s10 | System Prompt (分段) | `agent/prompt/builder.rs` |
-| s11 | Error Recovery | `agent/recovery.rs` + loop_engine handle_error |
-| s12 | Task System (任务图) | `tasks/store.rs` (blockedBy + 文件锁) |
-| s13 | Background Tasks | `background/manager.rs` (占位+通知并入) |
-| s14 | Cron Scheduler | `cron/scheduler.rs` + `workers.rs` |
-| s15 | Agent Teams | `team/mailbox.rs` + `autonomous.rs` |
-| s16 | Team Protocols | `team/protocol.rs` (request_id 状态机) |
-| s17 | Autonomous Agents | `team/autonomous.rs` (WORK/IDLE/SHUTDOWN + 自主认领) |
-| s18 | Worktree Isolation | `worktree/manager.rs` (git worktree + 名称校验) |
-| s19 | MCP Tools | `mcp/client.rs` + `pool.rs` (mcp__server__tool) |
-| s20 | Comprehensive Agent | `agent/loop_engine.rs` 的 9 步挂载顺序 |
-
----
-
-## 主循环挂载顺序 (s20)
+## 主循环挂载顺序
 
 `loop_engine::run_agent_loop` 每轮迭代：
 
-1. UserPromptSubmit hooks (s04) + s05 todo 提醒注入
-2. 注入 cron 队列 / 后台任务通知 / 队友 inbox (s13/s14/s15)
-3. 压缩管线 L3→L1→L2→(超阈值)L4 (s08)
-4. 组装 system prompt: identity+tools+workspace+memory 索引+skills 目录 (s10)
-5. assemble_tool_pool: 内置 + MCP (s19)
-6. LLM 流式调用，外包 recovery 错误恢复 (s11)
-7. 无 tool_use → Stop hooks → extract_memories (s09) → 结束
-8. 有 tool_use → PreToolUse(权限 s03) → 执行(可后台 s13/子代理 s06) → PostToolUse
+1. UserPromptSubmit hooks + todo 提醒注入
+2. 注入 cron 队列 / 后台任务通知 / 队友 inbox
+3. 压缩管线 L3→L1→L2→(超阈值)L4
+4. 组装 system prompt: identity+tools+workspace+memory 索引+skills 目录
+5. assemble_tool_pool: 内置 + MCP
+6. LLM 流式调用，外包 recovery 错误恢复
+7. 无 tool_use → Stop hooks → extract_memories → 结束
+8. 有 tool_use → PreToolUse(权限) → 执行(可后台/子代理) → PostToolUse
 9. tool_results 追加 → 回到 2
 
 ---
@@ -138,6 +111,5 @@ cargo check               # 全量类型检查
 
 ## 说明
 
-- 教程的 Python 教学代码逐机制翻译为 Rust 惯用实现：`threading` → tokio task，dict 分发 → trait object 注册表，文件锁 → fs4。
-- 阈值常量集中在 `constants.rs`，与教程保持一致 (200KB / 50 条 / 3 条 tool_result / 10 个记忆文件 / 退避公式等)。
+- 阈值常量集中在 `constants.rs` (200KB / 50 条 / 3 条 tool_result / 10 个记忆文件 / 退避公式等)。
 - shell 工具在 Windows 上通过 `powershell -NoProfile -NonInteractive -Command` 执行，超时 120s、输出截断 30K 字符。

@@ -1,4 +1,4 @@
-//! s02 文件工具 — read_file / write_file / edit_file / glob，safe_path 限定工作区
+//! 文件工具 — read_file / write_file / edit_file / glob，safe_path 限定工作区
 
 use async_trait::async_trait;
 use serde_json::{json, Value};

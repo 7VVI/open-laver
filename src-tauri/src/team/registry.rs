@@ -1,4 +1,4 @@
-//! s15/s17 队友注册表 — 记录持久队友的元数据与生命周期状态
+//! 队友注册表 — 记录持久队友的元数据与生命周期状态
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};

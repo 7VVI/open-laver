@@ -277,7 +277,7 @@ pub async fn is_session_running(state: St<'_>, session_id: String) -> Result<boo
         .unwrap_or(false))
 }
 
-// ---------------- s03 审批 ----------------
+// ---------------- 审批 ----------------
 
 #[tauri::command]
 pub async fn resolve_approval(
@@ -393,7 +393,7 @@ pub async fn test_connection(state: St<'_>) -> Result<String, String> {
         .join(" "))
 }
 
-// ---------------- s07 技能 ----------------
+// ---------------- 技能 ----------------
 
 #[tauri::command]
 pub async fn list_skills(state: St<'_>) -> Result<Vec<SkillMeta>, String> {
@@ -446,7 +446,7 @@ pub async fn delete_skill(state: St<'_>, name: String) -> Result<Vec<SkillMeta>,
     Ok(state.skills.list())
 }
 
-// ---------------- s09 记忆 ----------------
+// ---------------- 记忆 ----------------
 
 #[tauri::command]
 pub async fn list_memories(
@@ -460,14 +460,14 @@ pub async fn delete_memory(state: St<'_>, name: String) -> Result<(), String> {
     state.memory.delete(&name)
 }
 
-// ---------------- s12 任务图 ----------------
+// ---------------- 任务图 ----------------
 
 #[tauri::command]
 pub async fn list_tasks(state: St<'_>) -> Result<Vec<crate::tasks::store::Task>, String> {
     Ok(state.tasks.all())
 }
 
-// ---------------- s14 cron ----------------
+// ---------------- cron ----------------
 
 #[tauri::command]
 pub async fn list_cron_jobs(
@@ -576,7 +576,7 @@ pub async fn list_cron_runs(state: St<'_>) -> Result<Vec<CronRunDto>, String> {
         .collect())
 }
 
-// ---------------- s15-17 团队 ----------------
+// ---------------- 团队 ----------------
 
 #[tauri::command]
 pub async fn list_teammates(
@@ -593,7 +593,7 @@ pub async fn get_todos(state: St<'_>, session_id: String) -> Result<Vec<TodoItem
     }
 }
 
-// ---------------- s19 MCP ----------------
+// ---------------- MCP ----------------
 
 #[tauri::command]
 pub async fn list_mcp_servers(

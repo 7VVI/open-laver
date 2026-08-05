@@ -1,5 +1,5 @@
-//! s02 shell 工具 — Windows 走 PowerShell，支持超时与输出截断
-//! s13: run_in_background 参数交由后台管理器 (loop 层拦截，本工具执行前台命令)
+//! shell 工具 — Windows 走 PowerShell，支持超时与输出截断
+//! run_in_background 参数交由后台管理器 (loop 层拦截，本工具执行前台命令)
 
 use std::process::Stdio;
 use std::time::Duration;

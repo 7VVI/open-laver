@@ -1,4 +1,4 @@
-//! s05 TodoWrite 工具 + s07 load_skill + s08 compact 触发 + 记忆写入
+//! TodoWrite 工具 + load_skill + compact 触发 + 记忆写入
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -8,7 +8,7 @@ use crate::agent::ctx::ToolCtx;
 use crate::agent::session::TodoItem;
 use crate::gateway::events::{emit, EV_TODO_UPDATE};
 
-// ---------------- s05 todo_write ----------------
+// ---------------- todo_write ----------------
 
 pub struct TodoWriteTool;
 
@@ -78,23 +78,12 @@ impl Tool for TodoWriteTool {
             },
         );
 
-        let summary = items
-            .iter()
-            .map(|t| {
-                let mark = match t.status.as_str() {
-                    "completed" => "[x]",
-                    "in_progress" => "[~]",
-                    _ => "[ ]",
-                };
-                format!("{mark} {}", t.content)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        ToolOutput::ok(format!("待办已更新:\n{summary}"))
+        // 返回极简提示：待办已在界面可视化展示，避免模型把清单以 JSON/文本形式复述给用户
+        ToolOutput::ok(format!("待办清单已更新，共 {} 项。", items.len()))
     }
 }
 
-// ---------------- s07 load_skill ----------------
+// ---------------- load_skill ----------------
 
 pub struct LoadSkillTool;
 
@@ -124,7 +113,7 @@ impl Tool for LoadSkillTool {
     }
 }
 
-// ---------------- s09 remember (主动写记忆) ----------------
+// ---------------- remember (主动写记忆) ----------------
 
 pub struct RememberTool;
 

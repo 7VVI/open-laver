@@ -1,4 +1,4 @@
-//! s11 错误恢复 — 按错误类型分三条恢复路径
+//! 错误恢复 — 按错误类型分三条恢复路径
 
 use std::time::Duration;
 
@@ -37,7 +37,7 @@ pub enum RecoveryAction {
 }
 
 impl RecoveryState {
-    /// s11: max_tokens 截断处理
+    /// max_tokens 截断处理
     pub fn on_max_tokens(&mut self) -> RecoveryAction {
         if !self.has_escalated {
             self.has_escalated = true;
@@ -53,7 +53,7 @@ impl RecoveryState {
         ))
     }
 
-    /// s11: prompt_too_long 处理 (仅一次机会)
+    /// prompt_too_long 处理 (仅一次机会)
     pub fn on_prompt_too_long(&mut self) -> RecoveryAction {
         if !self.reactive_compact_used {
             self.reactive_compact_used = true;
@@ -63,7 +63,7 @@ impl RecoveryState {
         }
     }
 
-    /// s11: 429/529 指数退避
+    /// 429/529 指数退避
     pub fn on_transient(&mut self, err: &LlmError) -> RecoveryAction {
         self.retry_attempts += 1;
         if self.retry_attempts > MAX_RETRY_ATTEMPTS {

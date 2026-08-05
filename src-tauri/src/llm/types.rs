@@ -10,7 +10,7 @@ pub enum Role {
     Assistant,
 }
 
-/// 消息内容块：与教程/Anthropic 的 content block 语义一致
+/// 消息内容块：与 Anthropic 的 content block 语义一致
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ContentBlock {
@@ -175,7 +175,7 @@ pub enum StreamEvent {
     Done,
 }
 
-/// LLM 调用错误分类 (s11 错误恢复的输入)
+/// LLM 调用错误分类 (错误恢复的输入)
 #[derive(Debug, Clone)]
 pub enum LlmError {
     /// 429
@@ -207,7 +207,7 @@ impl std::fmt::Display for LlmError {
 
 impl std::error::Error for LlmError {}
 
-/// 粗略 token 估算: ~4 字符/token (教程同款启发式)
+/// 粗略 token 估算: ~4 字符/token (经验启发式)
 pub fn estimate_tokens_str(s: &str) -> usize {
     s.chars().count() / 4 + 1
 }

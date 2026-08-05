@@ -1,4 +1,4 @@
-//! s13 后台任务 — tokio::spawn 执行慢命令，先回占位 tool_result，完成后并入下一轮
+//! 后台任务 — tokio::spawn 执行慢命令，先回占位 tool_result，完成后并入下一轮
 
 use std::collections::HashMap;
 use std::path::PathBuf;

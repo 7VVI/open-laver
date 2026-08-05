@@ -8,9 +8,9 @@ use tauri::AppHandle;
 pub enum AgentKind {
     /// 主 Agent (完整工具集)
     Main,
-    /// s06 一次性子代理 (无 task 工具，防递归)
+    /// 一次性子代理 (无 task 工具，防递归)
     Sub,
-    /// s15 持久队友 (精简工具集 + send_message)
+    /// 持久队友 (精简工具集 + send_message)
     Teammate,
 }
 
@@ -23,7 +23,7 @@ pub struct ToolCtx {
     pub kind: AgentKind,
     /// 用户选定的办公工作目录
     pub workspace: PathBuf,
-    /// 实际执行目录 (worktree 绑定时被覆盖, s18)
+    /// 实际执行目录 (worktree 绑定时被覆盖)
     pub cwd: PathBuf,
 }
 

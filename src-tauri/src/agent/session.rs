@@ -1,4 +1,4 @@
-//! 会话状态 (s01 messages + 各章叠加的状态字段)
+//! 会话状态 (messages + 各模块叠加的状态字段)
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicBool;
@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 
 use crate::llm::types::Message;
 
-/// s05 Todo 项
+/// Todo 项
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TodoItem {
     pub content: String,
@@ -20,15 +20,15 @@ pub struct TodoItem {
 #[derive(Default)]
 pub struct SessionState {
     pub messages: Vec<Message>,
-    /// s05: 当前 todo 清单
+    /// 当前 todo 清单
     pub todos: Vec<TodoItem>,
-    /// s05: 距上次 todo_write 的轮数
+    /// 距上次 todo_write 的轮数
     pub rounds_since_todo: u32,
-    /// s03: "always allow" 审批记忆 (工具名或 工具名:模式)
+    /// "always allow" 审批记忆 (工具名或 工具名:模式)
     pub approval_always: HashSet<String>,
-    /// s08 L4: compact 连续失败计数 (熔断)
+    /// 压缩 L4: compact 连续失败计数 (熔断)
     pub compact_failures: u32,
-    /// s01/s20: 轮次计数
+    /// 轮次计数
     pub turn_count: u32,
 }
 

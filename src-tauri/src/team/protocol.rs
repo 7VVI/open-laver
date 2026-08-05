@@ -1,4 +1,4 @@
-//! s16 团队协议 — request_id 贯穿的 request-response 状态机
+//! 团队协议 — request_id 贯穿的 request-response 状态机
 //! shutdown 握手 + plan_approval 审批
 
 use std::collections::HashMap;

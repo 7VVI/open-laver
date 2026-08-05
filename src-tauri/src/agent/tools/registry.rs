@@ -1,4 +1,4 @@
-//! s02 工具注册表 — HashMap<name, Box<dyn Tool>>，加工具 = 加一条
+//! 工具注册表 — HashMap<name, Box<dyn Tool>>，加工具 = 加一条
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -47,7 +47,7 @@ impl ToolRegistry {
             .collect()
     }
 
-    /// 按 Agent 类型过滤可见工具集 (s06 子代理无 task；队友精简集)
+    /// 按 Agent 类型过滤可见工具集 (子代理无 task；队友精简集)
     pub fn specs_for(&self, kind: AgentKind, extra_hidden: &[&str]) -> Vec<ToolSpec> {
         self.order
             .iter()
@@ -57,7 +57,7 @@ impl ToolRegistry {
             .collect()
     }
 
-    /// 查表分发执行 (s02 核心)
+    /// 查表分发执行
     pub async fn dispatch(&self, name: &str, input: &Value, ctx: &ToolCtx) -> ToolOutput {
         match self.get(name) {
             Some(t) => t.run(input, ctx).await,

@@ -1,4 +1,4 @@
-//! s15 团队信箱 — .mailboxes/{agent}.jsonl 文件信箱，消费式读取
+//! 团队信箱 — .mailboxes/{agent}.jsonl 文件信箱，消费式读取
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

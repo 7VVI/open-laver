@@ -1,4 +1,4 @@
-//! s18 Worktree 隔离 — git worktree add，为并行任务提供独立目录+分支
+//! Worktree 隔离 — git worktree add，为并行任务提供独立目录+分支
 //! 名称校验防路径穿越；events.jsonl 审计
 
 use std::path::PathBuf;

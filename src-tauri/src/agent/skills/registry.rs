@@ -1,4 +1,4 @@
-//! s07 技能系统 — 两层加载
+//! 技能系统 — 两层加载
 //! 第 1 层: 启动扫描 skills/*/SKILL.md，解析 YAML frontmatter，目录注入 system prompt
 //! 第 2 层: load_skill(name) 时完整内容经 tool_result 注入当前对话
 

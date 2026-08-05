@@ -1,4 +1,4 @@
-//! s03 闸门 3: 用户审批 — 事件推送前端弹窗，oneshot 等待决策
+//! 闸门 3: 用户审批 — 事件推送前端弹窗，oneshot 等待决策
 
 use std::collections::HashMap;
 use std::sync::Mutex;

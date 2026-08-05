@@ -1,4 +1,4 @@
-//! s03 审批记忆 (悟空 session_approval_memory 对应物)
+//! 审批记忆 (悟空 session_approval_memory 对应物)
 //! "always allow" 决策按 pattern 记入会话状态，后续同类调用直接放行
 
 use serde_json::Value;

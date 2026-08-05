@@ -1,4 +1,4 @@
-//! s09 记忆服务 — .memory/*.md + MEMORY.md 索引，跨会话、不参与压缩
+//! 记忆服务 — .memory/*.md + MEMORY.md 索引，跨会话、不参与压缩
 //! 索引常驻 system prompt；每轮 side-query 选相关记忆注入；轮结束提取；达阈值合并
 
 use std::path::{Path, PathBuf};

@@ -1,4 +1,4 @@
-//! s09 记忆提取 — 每轮结束对照已有记忆提取新条目 (extract_memories)
+//! 记忆提取 — 每轮结束对照已有记忆提取新条目 (extract_memories)
 
 use std::sync::Arc;
 
@@ -67,7 +67,7 @@ pub async fn extract_memories(
     }
 }
 
-/// s09 consolidate — 达阈值时去重合并 (简化: 交给 LLM 归并)
+/// consolidate — 达阈值时去重合并 (简化: 交给 LLM 归并)
 pub async fn consolidate(
     provider: &Arc<dyn LlmProvider>,
     model: &str,

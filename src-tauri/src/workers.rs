@@ -1,4 +1,4 @@
-//! s14 后台工作线程: cron 调度器轮询 + 队列处理器 (空闲时交付)
+//! 后台工作线程: cron 调度器轮询 + 队列处理器 (空闲时交付)
 
 use std::sync::Arc;
 use std::time::Duration;

@@ -1,4 +1,4 @@
-//! s19 MCP 客户端 — stdio JSON-RPC 子进程: initialize -> tools/list -> tools/call
+//! MCP 客户端 — stdio JSON-RPC 子进程: initialize -> tools/list -> tools/call
 
 use std::process::Stdio;
 use std::sync::atomic::{AtomicI64, Ordering};

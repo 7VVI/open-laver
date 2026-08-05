@@ -1,4 +1,4 @@
-//! 编排工具集: s12 任务图 / s14 cron / s15-17 团队 / s18 worktree
+//! 编排工具集: 任务图 / cron / 团队 / worktree
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -9,7 +9,7 @@ use crate::cron::scheduler::CronJob;
 use crate::gateway::events::{emit, EV_TASK_UPDATE, EV_TEAM_MESSAGE};
 use crate::team::mailbox::{MailBus, MailMessage};
 
-// ============ s12 任务图 ============
+// ============ 任务图 ============
 
 pub struct TaskCreateTool;
 #[async_trait]
@@ -135,7 +135,7 @@ impl Tool for TaskCompleteTool {
     }
 }
 
-// ============ s14 cron ============
+// ============ cron ============
 
 pub struct CronScheduleTool;
 #[async_trait]
@@ -224,7 +224,7 @@ impl Tool for CronCancelTool {
     }
 }
 
-// ============ s15/s16 团队通信 ============
+// ============ 团队通信 ============
 
 pub struct SendMessageTool;
 #[async_trait]
@@ -262,7 +262,7 @@ impl Tool for SendMessageTool {
     }
 }
 
-// ============ s18 worktree ============
+// ============ worktree ============
 
 pub struct WorktreeCreateTool;
 #[async_trait]

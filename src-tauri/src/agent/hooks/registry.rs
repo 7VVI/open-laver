@@ -1,4 +1,4 @@
-//! s04 Hooks — 横切逻辑挂在循环周围，循环只调 trigger
+//! Hooks — 横切逻辑挂在循环周围，循环只调 trigger
 //!
 //! 四个触发点:
 //! - UserPromptSubmit: 入 LLM 前
@@ -51,7 +51,7 @@ impl HookRegistry {
         Self
     }
 
-    /// UserPromptSubmit: 目前用于注入 s05 todo 提醒等 (由 loop 组合)
+    /// UserPromptSubmit: 目前用于注入 todo 提醒等 (由 loop 组合)
     pub fn on_user_prompt(&self, _prompt: &str) -> PromptContext {
         PromptContext::default()
     }

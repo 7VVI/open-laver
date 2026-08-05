@@ -119,6 +119,23 @@ body {
   transition: transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
   transform-origin: bottom center;
 }
+
+/* 处理中流水点动画 */
+@keyframes flowDot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+.flow-dot {
+  animation: flowDot 1.2s ease-in-out infinite;
+}
 .greeting-hover:hover .greeting-avatar {
   animation: greetingWave 1s ease-in-out both;
   transform: rotate(-4deg) scale(1.05);

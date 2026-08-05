@@ -1,4 +1,4 @@
-//! s14 Cron 调度器 — croner 解析，tokio 每秒轮询 + minute_marker 防重复
+//! Cron 调度器 — croner 解析，tokio 每秒轮询 + minute_marker 防重复
 //! 触发入 mpsc 队列，Agent 空闲时注入 [Scheduled] 消息；durable 持久化跨重启
 
 use std::collections::HashMap;

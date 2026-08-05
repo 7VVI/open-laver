@@ -1,4 +1,4 @@
-//! s15/s17 队友生命周期 — WORK -> IDLE(轮询) -> SHUTDOWN，自主认领任务
+//! 队友生命周期 — WORK -> IDLE(轮询) -> SHUTDOWN，自主认领任务
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;

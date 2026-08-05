@@ -1,6 +1,6 @@
-//! s01 + s20 主循环引擎 — 一个 while 循环，各章机制按顺序挂载
+//! 主循环引擎 — 一个 while 循环，各模块机制按顺序挂载
 //!
-//! 每轮迭代顺序 (s20):
+//! 每轮迭代顺序:
 //! 1. UserPromptSubmit hooks
 //! 2. 注入 cron 队列 + 后台通知 + 队友 inbox
 //! 3. 压缩管线 (L3->L1->L2->L4)
@@ -53,11 +53,11 @@ pub async fn run_turn(
         },
     );
 
-    // 追加用户输入 (含 s04 UserPromptSubmit: 注入 todo 提醒等)
+    // 追加用户输入 (UserPromptSubmit: 注入 todo 提醒等)
     {
         let mut st = session.state.lock().await;
         let mut prompt = user_input.clone();
-        // s05: 连续多轮未更新 todo 则提醒
+        // 连续多轮未更新 todo 则提醒
         if !st.todos.is_empty() && st.rounds_since_todo >= TODO_REMINDER_ROUNDS {
             prompt = format!(
                 "<reminder>别忘了用 todo_write 更新任务进度</reminder>\n{prompt}"
@@ -229,7 +229,7 @@ pub async fn run_agent_loop(
             }
         };
 
-        // s11: 输出被 max_tokens 截断 (含工具参数被截断) -> 升级上限重试，丢弃残缺回复
+        // 输出被 max_tokens 截断 (含工具参数被截断) -> 升级上限重试，丢弃残缺回复
         if response.stop_reason == StopReason::MaxTokens {
             match recovery.on_max_tokens() {
                 RecoveryAction::EscalateMaxTokens | RecoveryAction::ContinueTruncated => {
@@ -283,7 +283,7 @@ pub async fn run_agent_loop(
 
         // --- 7. 无 tool_use -> 结束 ---
         if !response.needs_follow_up() {
-            // s09: 提取记忆 (仅主 Agent)
+            // 提取记忆 (仅主 Agent)
             if kind == AgentKind::Main {
                 let recent = {
                     let st = session.state.lock().await;
@@ -327,7 +327,7 @@ pub async fn run_agent_loop(
     }
 }
 
-/// 组装工具池 (s19: 内置 + MCP)
+/// 组装工具池 (内置 + MCP)
 async fn assemble_tool_pool(state: &Arc<AppState>, kind: AgentKind) -> Vec<ToolSpec> {
     let mut specs = state.registry.specs_for(kind, &[]);
     // 子代理不接入 MCP (保持隔离简单)；主 Agent 与队友合并 MCP 工具
@@ -364,7 +364,7 @@ async fn call_with_stream(
     provider.chat(req, &sink).await
 }
 
-/// s11: 错误恢复分派；返回 true 表示应重试
+/// 错误恢复分派；返回 true 表示应重试
 async fn handle_error(
     recovery: &mut RecoveryState,
     err: &LlmError,
@@ -526,13 +526,13 @@ async fn execute_tool(
         },
     );
 
-    // --- s06 子代理 task 工具特殊处理 ---
+    // --- 子代理 task 工具特殊处理 ---
     if name == "task" && ctx.kind != AgentKind::Sub {
         let out = crate::agent::subagent::run_subagent(state, ctx, input).await;
         return finish_tool(&ctx.app, ctx, id, name, out.content, !out.is_error);
     }
 
-    // --- s13 后台执行拦截 ---
+    // --- 后台执行拦截 ---
     if name == "shell" && input["run_in_background"].as_bool().unwrap_or(false) {
         let command = input["command"].as_str().unwrap_or("").to_string();
         let bg_id = state.background.start(
@@ -545,7 +545,7 @@ async fn execute_tool(
         return finish_tool(&ctx.app, ctx, id, name, msg, true);
     }
 
-    // --- s03 权限: PreToolUse ---
+    // --- 权限: PreToolUse ---
     match check_permission(state, ctx, session, name, input).await {
         Decision::Deny(reason) => {
             let msg = format!("Permission denied: {reason}");
@@ -555,7 +555,7 @@ async fn execute_tool(
         Decision::Ask(_) => {} // check_permission 已在内部处理 ask，走到这里说明放行
     }
 
-    // --- s19 MCP 路由 / 内置分发 ---
+    // --- MCP 路由 / 内置分发 ---
     let out = if name.starts_with("mcp__") {
         match state.mcp.call(name, input).await {
             Ok(s) => crate::agent::tools::tool::ToolOutput::ok(s),
@@ -568,7 +568,7 @@ async fn execute_tool(
     finish_tool(&ctx.app, ctx, id, name, out.content, !out.is_error)
 }
 
-/// s03 权限检查 (含审批记忆 + 弹窗)
+/// 权限检查 (含审批记忆 + 弹窗)
 async fn check_permission(
     state: &Arc<AppState>,
     ctx: &ToolCtx,

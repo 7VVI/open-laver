@@ -1,4 +1,4 @@
-//! s08 上下文压缩管线 — 四层，顺序固定 (便宜的先跑)
+//! 上下文压缩管线 — 四层，顺序固定 (便宜的先跑)
 //! L3 tool_result_budget -> L1 snip -> L2 micro -> (超阈值) L4 compact_history
 //! + reactive_compact (prompt_too_long 应急)
 

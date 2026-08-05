@@ -1,4 +1,4 @@
-//! s06 task (声明) + s15 spawn_teammate / shutdown_teammate 工具
+//! task (声明) + spawn_teammate / shutdown_teammate 工具
 //! task 的实际执行在 loop_engine::execute_tool 中拦截 (需要 spawn 子循环)
 
 use async_trait::async_trait;
@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use super::tool::{Tool, ToolOutput};
 use crate::agent::ctx::ToolCtx;
 
-// s06: task 工具仅提供声明；执行被 loop_engine 拦截
+// task 工具仅提供声明；执行被 loop_engine 拦截
 pub struct TaskTool;
 #[async_trait]
 impl Tool for TaskTool {
@@ -30,7 +30,7 @@ impl Tool for TaskTool {
     }
 }
 
-// s15: spawn_teammate
+// spawn_teammate
 pub struct SpawnTeammateTool;
 #[async_trait]
 impl Tool for SpawnTeammateTool {
@@ -71,7 +71,7 @@ impl Tool for SpawnTeammateTool {
     }
 }
 
-// s16: shutdown_teammate (体面关机握手)
+// shutdown_teammate (体面关机握手)
 pub struct ShutdownTeammateTool;
 #[async_trait]
 impl Tool for ShutdownTeammateTool {

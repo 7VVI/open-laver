@@ -1,4 +1,4 @@
-//! s12 任务图 — 文件持久化 (.tasks/{id}.json)，blockedBy 依赖驱动
+//! 任务图 — 文件持久化 (.tasks/{id}.json)，blockedBy 依赖驱动
 //! 状态机: pending -> (claim) in_progress -> (complete) completed
 
 use std::path::{Path, PathBuf};
@@ -152,7 +152,7 @@ impl TaskStore {
         self.write(&task)
     }
 
-    /// s17 自主认领: 扫描可认领任务 (pending + 无 owner + can_start)
+    /// 自主认领: 扫描可认领任务 (pending + 无 owner + can_start)
     pub fn claimable(&self) -> Vec<Task> {
         self.all()
             .into_iter()

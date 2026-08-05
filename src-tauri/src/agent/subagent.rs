@@ -1,4 +1,4 @@
-//! s06 子代理 — task 工具 spawn 子循环: 全新 messages、无 task 工具、仅回传最终文本
+//! 子代理 — task 工具 spawn 子循环: 全新 messages、无 task 工具、仅回传最终文本
 
 use std::sync::Arc;
 

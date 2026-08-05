@@ -1,4 +1,4 @@
-//! s10 系统提示词 — 分段组装，context hash 做缓存 key
+//! 系统提示词 — 分段组装，context hash 做缓存 key
 //! identity/tools/workspace 恒定 + memory 索引/skills 目录 动态段
 
 use std::sync::Mutex;

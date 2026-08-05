@@ -1,4 +1,4 @@
-//! s19 MCP 工具池 — 合并内置 + MCP 工具，命名 mcp__{server}__{tool}，按前缀路由
+//! MCP 工具池 — 合并内置 + MCP 工具，命名 mcp__{server}__{tool}，按前缀路由
 
 use std::collections::HashMap;
 use std::path::PathBuf;
