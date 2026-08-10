@@ -220,7 +220,7 @@ pub async fn run_agent_loop(
         let resp = call_with_stream(&provider, &req, &ctx.app, &ctx.session_id, &ctx.agent_name)
             .await;
 
-        let response = match resp {
+        let mut response = match resp {
             Ok(r) => {
                 recovery.on_success();
                 r
@@ -254,6 +254,28 @@ pub async fn run_agent_loop(
                 }
                 _ => {}
             }
+        }
+
+        // 同一轮回复中重复的工具调用 (同 id 或同名称+参数) 只保留一次，
+        // 避免重复执行、重复展示和结果无法配对
+        {
+            let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut seen_key: std::collections::HashSet<String> = std::collections::HashSet::new();
+            response.content.retain(|b| match b {
+                ContentBlock::ToolUse { id, name, input } => {
+                    let key = format!(
+                        "{name}|{}",
+                        serde_json::to_string(input).unwrap_or_default()
+                    );
+                    if seen_ids.contains(id) || !seen_key.insert(key) {
+                        false
+                    } else {
+                        seen_ids.insert(id.clone());
+                        true
+                    }
+                }
+                _ => true,
+            });
         }
 
         // 追加 assistant 回复

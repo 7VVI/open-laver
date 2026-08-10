@@ -23,6 +23,7 @@ interface ToolCall {
   input: any;
   ok?: boolean;
   output?: string;
+  dup?: number;
 }
 type UiBlock =
   | { kind: "text"; text: string }
@@ -35,6 +36,23 @@ interface UiMsg {
   tools?: ToolCall[];
   streaming?: boolean;
   attachments?: string[];
+}
+
+// 工具步骤去重: 相同 id 或相同名称+参数视为重复调用，只保留一行并累计次数
+function addToolUnique(tools: ToolCall[], tool: ToolCall): boolean {
+  const key = (t: ToolCall) => `${t.name}|${JSON.stringify(t.input ?? {})}`;
+  const sameId = tools.find((t) => t.id === tool.id);
+  if (sameId) {
+    sameId.dup = (sameId.dup ?? 0) + 1;
+    return false;
+  }
+  const sameContent = tools.find((t) => key(t) === key(tool));
+  if (sameContent) {
+    sameContent.dup = (sameContent.dup ?? 0) + 1;
+    return false;
+  }
+  tools.push(tool);
+  return true;
 }
 
 function greeting() {
@@ -103,27 +121,6 @@ export default function ChatView({
 
   const active = models.find((m) => m.active);
   const hasMessages = messages.length > 0;
-  const lastMsg = messages[messages.length - 1];
-  const streamingNow = !!lastMsg && lastMsg.role === "assistant" && !!lastMsg.streaming;
-  // 处理中指示器：延迟出现 + 即时消失
-  // - 任务进行中超过 500ms 才显示（过滤掉收尾窗口的瞬间闪烁）
-  // - 一旦条件不满足立即隐藏（无延迟）
-  const [showProc, setShowProc] = useState(false);
-  const showProcRef = useRef(false);
-  useEffect(() => {
-    const shouldShow = running && !streamingNow;
-    showProcRef.current = shouldShow;
-    if (shouldShow) {
-      // 延迟出现：收尾窗口短于 500ms 时根本不显示
-      const t = setTimeout(() => {
-        if (showProcRef.current) setShowProc(true);
-      }, 500);
-      return () => clearTimeout(t);
-    }
-    // 即时消失
-    setShowProc(false);
-  }, [running, streamingNow]);
-
   const setQueueBoth = (updater: (q: { text: string; attachments: string[] }[]) => { text: string; attachments: string[] }[]) => {
     queueRef.current = updater(queueRef.current);
     setQueue([...queueRef.current]);
@@ -178,7 +175,7 @@ export default function ChatView({
           } else if (b.type === "tool_use") {
             if (curText) { blocks.push({ kind: "text", text: curText }); curText = ""; }
             if (!curTools) curTools = [];
-            curTools.push({ id: b.id!, name: b.name!, input: b.input });
+            addToolUnique(curTools, { id: b.id!, name: b.name!, input: b.input });
           }
         }
         if (curText) blocks.push({ kind: "text", text: curText });
@@ -190,18 +187,21 @@ export default function ChatView({
           // tool_result 可能因上下文压缩(compact)与 tool_use 不再相邻：
           // 先匹配本条消息内的工具，再回退匹配历史消息中的工具 (从后往前)
           for (const r of results) {
-            let tc = tools.find((t) => t.id === r.tool_use_id);
-            if (!tc) {
-              for (let i = ui.length - 1; i >= 0 && !tc; i--) {
+            let found = false;
+            for (const t of tools) {
+              if (t.id === r.tool_use_id) { t.output = r.content; t.ok = !r.is_error; found = true; }
+            }
+            if (!found) {
+              for (let i = ui.length - 1; i >= 0 && !found; i--) {
                 for (const blk of ui[i].blocks ?? []) {
                   if (blk.kind === "tools") {
-                    tc = blk.tools.find((t) => t.id === r.tool_use_id);
-                    if (tc) break;
+                    for (const t of blk.tools) {
+                      if (t.id === r.tool_use_id) { t.output = r.content; t.ok = !r.is_error; found = true; }
+                    }
                   }
                 }
               }
             }
-            if (tc) { tc.output = r.content; tc.ok = !r.is_error; }
           }
         }
         if (!blocks.length) continue;
@@ -211,7 +211,7 @@ export default function ChatView({
           for (const blk of blocks) {
             const lb = last.blocks[last.blocks.length - 1];
             if (blk.kind === "text" && lb && lb.kind === "text") lb.text += "\n\n" + blk.text;
-            else if (blk.kind === "tools" && lb && lb.kind === "tools") lb.tools.push(...blk.tools);
+            else if (blk.kind === "tools" && lb && lb.kind === "tools") { for (const t of blk.tools) addToolUnique(lb.tools, t); }
             else last.blocks.push(blk);
           }
           last.text = last.blocks.filter((x) => x.kind === "text").map((x) => x.text).join("\n\n");
@@ -296,26 +296,39 @@ export default function ChatView({
       // 工具步骤按到达顺序追加为 tools 块（或并入末尾 tools 块）
       const tool: ToolCall = { id: p.id, name: p.name, input: p.input };
       const tb = last.blocks[last.blocks.length - 1];
-      if (tb && tb.kind === "tools") tb.tools.push(tool);
+      if (tb && tb.kind === "tools") addToolUnique(tb.tools, tool);
       else last.blocks.push({ kind: "tools", tools: [tool] });
-      if (!last.tools) last.tools = [];
-      last.tools.push(tool);
+      last.tools = last.blocks.filter((b) => b.kind === "tools").flatMap((b) => b.tools);
       return copy;
     });
   });
-  useTauriEvent<{ session_id: string; id: string; ok: boolean; output: string }>(EV.TOOL_RESULT, (p) => {
+  useTauriEvent<{ session_id: string; id: string; name: string; ok: boolean; output: string }>(EV.TOOL_RESULT, (p) => {
     if (p.session_id !== sessionId) return;
     setMessages((prev) => {
-      const copy = [...prev];
-      for (let i = copy.length - 1; i >= 0; i--) {
-        let found = false;
-        for (const blk of copy[i].blocks ?? []) {
-          if (blk.kind === "tools") {
-            const tc = blk.tools.find((t) => t.id === p.id);
-            if (tc) { tc.ok = p.ok; tc.output = p.output; found = true; break; }
+      const copy = prev.map((m) => ({
+        ...m,
+        blocks: m.blocks?.map((b) => (b.kind === "tools" ? { ...b, tools: b.tools.map((t) => ({ ...t })) } : b)),
+      }));
+      let matched = false;
+      for (const m of copy) {
+        for (const blk of m.blocks ?? []) {
+          if (blk.kind !== "tools") continue;
+          for (const t of blk.tools) {
+            if (t.id === p.id) { t.ok = p.ok; t.output = p.output; matched = true; }
           }
         }
-        if (found) break;
+      }
+      // 结果 id 未匹配到(例如同内容重复调用被去重合并): 回退标记同名且仍在执行的工具
+      if (!matched) {
+        outer:
+        for (const m of copy) {
+          for (const blk of m.blocks ?? []) {
+            if (blk.kind !== "tools") continue;
+            for (const t of blk.tools) {
+              if (t.name === p.name && t.ok === undefined) { t.ok = p.ok; t.output = p.output; break outer; }
+            }
+          }
+        }
       }
       return copy;
     });
@@ -481,9 +494,9 @@ export default function ChatView({
               <div ref={scrollRef} className="h-full overflow-y-auto px-6 py-6">
                 <div className="max-w-3xl mx-auto space-y-5">
                   {messages.map((m, i) => (
-                    <MessageBubble key={i} msg={m} taskDone={taskDone} todos={todos} workspace={workspace} />
+                    <MessageBubble key={i} msg={m} taskDone={taskDone} todos={todos} workspace={workspace} isLast={i === messages.length - 1} />
                   ))}
-                  {showProc && (
+                  {running && (
                     <div className="flex items-center gap-2 text-sm text-slate-400">
                       <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />
                       处理中
@@ -593,10 +606,9 @@ function Composer(props: {
     const lh = parseFloat(cs.lineHeight) || 24;
     const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
     const maxH = lh * 7 + pad;
-    // 有内容时额外预留一行高度，方便继续输入；空输入保持单行
-    const extra = props.input.trim() ? lh : 0;
-    ta.style.height = Math.min(ta.scrollHeight + extra, maxH) + "px";
-    ta.style.overflowY = ta.scrollHeight + extra > maxH + 1 ? "auto" : "hidden";
+    // 单行时不撑大；内容换行、高度不够时才增高 (最多 7 行)
+    ta.style.height = Math.min(ta.scrollHeight, maxH) + "px";
+    ta.style.overflowY = ta.scrollHeight > maxH + 1 ? "auto" : "hidden";
   }, [props.input]);
 
   return (
@@ -961,7 +973,7 @@ function pathToLinks(text: string, workspace: string): string {
   return changed ? out : text;
 }
 
-function MessageBubble({ msg, taskDone, todos, workspace }: { msg: UiMsg; taskDone: boolean; todos: TodoItem[]; workspace: string }) {
+function MessageBubble({ msg, taskDone, todos, workspace, isLast }: { msg: UiMsg; taskDone: boolean; todos: TodoItem[]; workspace: string; isLast: boolean }) {
   const [copied, setCopied] = useState<null | "text" | "md">(null);
   const textBlocks = msg.blocks.filter((b) => b.kind === "text").map((b) => b.text);
   const hasText = textBlocks.length > 0;
@@ -1022,7 +1034,7 @@ function MessageBubble({ msg, taskDone, todos, workspace }: { msg: UiMsg; taskDo
               {i === lastTodoIdx && todos.length > 0 && <TodoPanel todos={todos} />}
             </Fragment>
           ) : (
-            <div key={i} className="text-[15px] text-slate-800 md leading-relaxed">
+            <div key={i} className="text-[13px] text-[#333333] leading-[24px]">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 urlTransform={(url) => url}
@@ -1055,7 +1067,7 @@ function MessageBubble({ msg, taskDone, todos, workspace }: { msg: UiMsg; taskDo
           )
         )}
         {/* AI 回复末尾: 复制文本 / 复制 Markdown (任务结束后才显示，淡入避免突兀) */}
-        {hasText && !msg.streaming && taskDone && (
+        {isLast && hasText && !msg.streaming && taskDone && (
           <div className="flex items-center gap-1 pt-0.5 fade-in">
             <button
               onClick={() => copy("text")}
@@ -1312,25 +1324,28 @@ function ToolStatusIcon({ status }: { status: "running" | "ok" | "err" }) {
 }
 
 function ToolActivity({ tools }: { tools: ToolCall[] }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const running = tools.some((t) => t.ok === undefined);
-  const done = tools.filter((t) => t.ok !== undefined).length;
+  const total = tools.reduce((n, t) => n + 1 + (t.dup ?? 0), 0);
+  const done = tools.reduce((n, t) => n + (t.ok !== undefined ? 1 + (t.dup ?? 0) : 0), 0);
   return (
     <div className="text-sm">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 py-0.5"
+        className="flex items-center gap-2 text-slate-500 hover:text-slate-700 py-0.5"
       >
         {running ? (
-          <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin" />
+          <span className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />
         ) : (
-          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          <span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          </span>
         )}
-        <span>{running ? `已完成 ${done} 个步骤…` : `已完成 ${tools.length} 个步骤`}</span>
-        <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 transition-transform ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+        <span className="text-xs">{running ? `已完成 ${done} 个步骤…` : `已完成 ${total} 个步骤`}</span>
+        <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 text-slate-400 transition-transform ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       {open && (
-        <div className="mt-1 ml-[7px] border-l-2 border-slate-100 pl-3 space-y-0.5">
+        <div className="mt-0.5 space-y-0.5">
           {tools.map((t) => (
             <ToolLine key={t.id} tool={t} />
           ))}
@@ -1350,13 +1365,22 @@ function ToolLine({ tool }: { tool: ToolCall }) {
     <div>
       <button
         onClick={() => hasDetail && setOpen((v) => !v)}
-        className={`w-full flex items-center gap-2 py-0.5 text-left text-slate-600 ${hasDetail ? "hover:text-slate-800 cursor-pointer" : "cursor-default"}`}
+        className={`w-full flex items-center gap-2 py-0.5 pl-1 text-left text-[13px] leading-6 text-slate-600 ${hasDetail ? "hover:text-slate-800 cursor-pointer" : "cursor-default"}`}
       >
-        <ToolStatusIcon status={status} />
+        {status === "running" ? (
+          <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />
+        ) : status === "err" ? (
+          <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+        ) : (
+          <span className="w-3.5 h-3.5 rounded-full bg-slate-400 flex items-center justify-center shrink-0">
+            <svg viewBox="0 0 24 24" className="w-2 h-2 text-white" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          </span>
+        )}
         <span className="truncate">{toolLabel(tool)}</span>
+        {tool.dup ? <span className="shrink-0 text-[10px] text-slate-400">×{tool.dup + 1}</span> : null}
       </button>
       {open && hasDetail && (
-        <div className="ml-[22px] my-1 rounded-lg bg-slate-50 border border-slate-100 p-2 text-xs text-slate-500 space-y-1 max-h-64 overflow-auto">
+        <div className="ml-6 my-1 rounded-lg bg-slate-50 border border-slate-100 p-2 text-xs text-slate-500 space-y-1 max-h-64 overflow-auto">
           {tool.input && Object.keys(tool.input).length > 0 && (
             <pre className="whitespace-pre-wrap break-all">{JSON.stringify(tool.input, null, 2)}</pre>
           )}
