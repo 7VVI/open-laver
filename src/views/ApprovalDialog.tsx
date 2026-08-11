@@ -49,7 +49,7 @@ export default function ApprovalDialog({
           </button>
           <button
             onClick={() => onResolve(req.id, "allow_always")}
-            className="px-4 py-2 rounded-lg text-sm bg-[#8b5cf6] hover:bg-[#7c3aed] text-white"
+            className="px-4 py-2 rounded-lg text-sm bg-[#333333] hover:bg-[#111111] text-white"
           >
             始终允许
           </button>

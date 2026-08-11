@@ -312,6 +312,131 @@ pub async fn set_workspace(state: St<'_>, path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub async fn get_permission_mode(state: St<'_>) -> Result<String, String> {
+    Ok(match state.permission_mode().await {
+        crate::state::PermissionMode::Default => "default".into(),
+        crate::state::PermissionMode::Full => "full".into(),
+    })
+}
+
+#[tauri::command]
+pub async fn set_permission_mode(state: St<'_>, mode: String) -> Result<(), String> {
+    let m = match mode.as_str() {
+        "full" => crate::state::PermissionMode::Full,
+        _ => crate::state::PermissionMode::Default,
+    };
+    state.set_permission_mode(m).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_default_workspace(state: St<'_>, path: String) -> Result<(), String> {
+    state.set_default_workspace(PathBuf::from(path)).await;
+    Ok(())
+}
+
+// ---------------- 存储 ----------------
+
+#[derive(Serialize)]
+pub struct StorageItemDto {
+    pub label: String,
+    pub path: String,
+    pub bytes: u64,
+}
+
+#[derive(Serialize)]
+pub struct StorageInfoDto {
+    pub workspace: String,
+    pub default_workspace: String,
+    pub data_dir: String,
+    pub total_bytes: u64,
+    pub items: Vec<StorageItemDto>,
+}
+
+/// 递归统计目录占用字节数
+fn dir_size(path: &std::path::Path) -> u64 {
+    let mut total = 0u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                let meta = match entry.metadata() {
+                    Ok(m) => m,
+                    Err(_) => continue,
+                };
+                if meta.is_dir() {
+                    stack.push(p);
+                } else if meta.is_file() {
+                    total += meta.len();
+                }
+            }
+        }
+    }
+    total
+}
+
+#[tauri::command]
+pub async fn get_storage_info(state: St<'_>) -> Result<StorageInfoDto, String> {
+    let workspace = state.workspace().await.to_string_lossy().to_string();
+    let default_workspace = state.default_workspace().await.to_string_lossy().to_string();
+    let data_dir = state.data_dir().clone();
+    let mut items: Vec<StorageItemDto> = Vec::new();
+    let mut other_bytes = 0u64;
+
+    if let Ok(rd) = std::fs::read_dir(&data_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let size = if p.is_dir() {
+                dir_size(&p)
+            } else if p.is_file() {
+                entry.metadata().map(|m| m.len()).unwrap_or(0)
+            } else {
+                0
+            };
+            if size == 0 {
+                continue;
+            }
+            let label = match name.as_str() {
+                "laver.db" => "会话数据库",
+                "skills" => "技能",
+                ".memory" => "记忆",
+                ".tasks" => "任务",
+                ".mailboxes" => "邮件",
+                ".task_outputs" => "任务输出",
+                ".transcripts" => "对话记录",
+                _ => {
+                    other_bytes += size;
+                    continue;
+                }
+            };
+            items.push(StorageItemDto {
+                label: label.to_string(),
+                path: p.to_string_lossy().to_string(),
+                bytes: size,
+            });
+        }
+    }
+    if other_bytes > 0 {
+        items.push(StorageItemDto {
+            label: "其他".to_string(),
+            path: data_dir.to_string_lossy().to_string(),
+            bytes: other_bytes,
+        });
+    }
+    items.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+    let total_bytes = items.iter().map(|i| i.bytes).sum();
+    Ok(StorageInfoDto {
+        workspace,
+        default_workspace,
+        data_dir: data_dir.to_string_lossy().to_string(),
+        total_bytes,
+        items,
+    })
+}
+
 // ---------------- 工作目录文件树 ----------------
 
 #[derive(Serialize)]

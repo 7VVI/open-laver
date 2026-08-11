@@ -617,6 +617,10 @@ async fn check_permission(
                     return Decision::Allow;
                 }
             }
+            // 完全访问权限 -> 自动放行, 不弹审核框 (硬拒绝清单在 engine 层仍生效)
+            if state.permission_mode().await == crate::state::PermissionMode::Full {
+                return Decision::Allow;
+            }
             let d = state
                 .approvals
                 .request(&ctx.app, &ctx.session_id, &ctx.agent_name, name, &reason, input)

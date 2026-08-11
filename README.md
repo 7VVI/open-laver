@@ -23,7 +23,7 @@ npm run tauri build         # 打包 Windows 安装包
 1. 选择工作目录（Agent 的文件操作默认限定其内）。
 2. 选择模型提供商预设（通义千问 / DeepSeek / Kimi / Anthropic），填入 API Key，点「测试连接」。
 
-数据目录：`%APPDATA%/laver-agent/`（SQLite、skills/、.memory/、.tasks/、.mailboxes/、.task_outputs/、mcpServers.json）。
+数据目录：`C:\Users\{user}\.Laver/`（SQLite、skills/、.memory/、.tasks/、.mailboxes/、.task_outputs/、mcpServers.json）。
 
 ---
 

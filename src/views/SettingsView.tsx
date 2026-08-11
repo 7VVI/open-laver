@@ -34,7 +34,7 @@ export default function SettingsView() {
             />
             <button
               onClick={pickWorkspace}
-              className="bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg px-4 text-sm"
+              className="bg-[#333333] hover:bg-[#111111] text-white rounded-lg px-4 text-sm"
             >
               选择
             </button>

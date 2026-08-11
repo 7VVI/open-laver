@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api } from "../lib/api";
+import { api, StorageInfo } from "../lib/api";
 import ModelsView from "./ModelsView";
 import MemoryView from "./MemoryView";
 import McpView from "./McpView";
@@ -57,7 +57,7 @@ export default function SettingsDialog({
         onClick={(e) => e.stopPropagation()}
       >
         {/* 左侧分类 */}
-        <aside className="w-52 shrink-0 bg-[#f7f8fa] border-r border-slate-200 py-3 overflow-y-auto">
+        <aside className="w-52 shrink-0 bg-[#f6f6f6] border-r border-slate-200 py-3 overflow-y-auto">
           <div className="px-4 pb-2 text-[13px] font-semibold text-slate-700">设置</div>
           {CATS.map((c) => (
             <button
@@ -65,11 +65,11 @@ export default function SettingsDialog({
               onClick={() => setCat(c.id)}
               className={`w-full flex items-center gap-3 px-4 py-2 text-sm transition ${
                 cat === c.id
-                  ? "bg-[#f0e9ff] text-[#8b5cf6] font-medium"
+                  ? "bg-[#e0e0e0] text-[#333333] font-medium"
                   : "text-slate-600 hover:bg-slate-100"
               }`}
             >
-              <span className={cat === c.id ? "text-[#8b5cf6]" : "text-slate-400"}>{c.icon}</span>
+              <span className={cat === c.id ? "text-[#333333]" : "text-slate-400"}>{c.icon}</span>
               {c.label}
             </button>
           ))}
@@ -104,42 +104,146 @@ export default function SettingsDialog({
 
 function SystemPane({ onNotice }: { onNotice?: (level: string, text: string) => void }) {
   const [workspace, setWorkspace] = useState("");
+  const [storage, setStorage] = useState<StorageInfo | null>(null);
+
+  const loadStorage = () => {
+    api
+      .getStorageInfo()
+      .then((s) => {
+        setStorage(s);
+        setWorkspace(s.default_workspace);
+      })
+      .catch(() => {});
+  };
+
   useEffect(() => {
-    api.getWorkspace().then((w) => setWorkspace(w.workspace));
+    loadStorage();
   }, []);
 
   const pick = async () => {
     const dir = await open({ directory: true, multiple: false });
     if (typeof dir === "string") {
-      await api.setWorkspace(dir);
+      await api.setDefaultWorkspace(dir);
       setWorkspace(dir);
-      onNotice?.("info", "已更新工作目录");
+      loadStorage();
+      onNotice?.("info", "已更新默认工作空间");
     }
   };
 
   return (
     <div className="max-w-2xl px-8 py-8">
       <h1 className="text-xl font-semibold text-slate-800 mb-6">系统设置</h1>
-      <Section title="工作目录">
-        <p className="text-xs text-slate-500 mb-2">
-          智能体的文件操作默认限定在此目录内，目录之外的写操作会触发权限确认。
-        </p>
-        <div className="flex gap-2">
-          <input
-            readOnly
-            value={workspace}
-            className="flex-1 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700"
-          />
-          <button
-            onClick={pick}
-            className="bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg px-4 text-sm"
-          >
-            选择
-          </button>
+
+      <Section title="存储">
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-1.5">
+            <h3 className="text-sm font-medium text-slate-700">默认工作空间</h3>
+            <button
+              onClick={pick}
+              className="bg-[#333333] hover:bg-[#111111] text-white rounded-lg px-3 py-1 text-xs"
+            >
+              选择
+            </button>
+          </div>
+          <p className="text-xs text-slate-500 mb-2">
+            智能体的文件操作默认限定在此目录内，目录之外的写操作会触发权限确认。
+          </p>
+          <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 truncate">
+            {workspace || "加载中…"}
+          </div>
+          {storage && (
+            <div className="text-xs text-slate-400 mt-2 truncate">
+              当前工作空间（实时）：{storage.workspace}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-slate-100 pt-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <h3 className="text-sm font-medium text-slate-700">程序数据</h3>
+            {storage && (
+              <button
+                onClick={() => api.openPath(storage.data_dir).catch(() => {})}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg px-3 py-1 text-xs"
+              >
+                打开文件夹
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mb-2">
+            应用配置、会话记录、记忆、技能等数据保存在本机此目录。
+          </p>
+          <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 truncate">
+            {storage ? storage.data_dir : "加载中…"}
+          </div>
+
+          {storage && storage.total_bytes > 0 && (
+            <div className="mt-5">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-xs text-slate-500">占用空间</span>
+                <span className="text-sm font-semibold text-slate-700">
+                  {fmtBytes(storage.total_bytes)}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                {storage.items.map((it, i) => (
+                  <div
+                    key={it.label}
+                    className="h-full"
+                    style={{
+                      width: pct(it.bytes, storage.total_bytes),
+                      backgroundColor: BAR_COLORS[i % BAR_COLORS.length],
+                    }}
+                  />
+                ))}
+              </div>
+              <div className="mt-3 space-y-2">
+                {storage.items.map((it, i) => (
+                  <div key={it.label} className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-xs text-slate-500">{it.label}</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: pct(it.bytes, storage.total_bytes),
+                          backgroundColor: BAR_COLORS[i % BAR_COLORS.length],
+                        }}
+                      />
+                    </div>
+                    <span className="w-20 shrink-0 text-right text-xs text-slate-500">
+                      {fmtBytes(it.bytes)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Section>
     </div>
   );
+}
+
+const BAR_COLORS = [
+  "#34c759",
+  "#f59e0b",
+  "#10b981",
+  "#3b82f6",
+  "#ef4444",
+  "#1a7f37",
+  "#06b6d4",
+  "#64748b",
+];
+
+function fmtBytes(n: number): string {
+  if (n >= 1 << 30) return (n / (1 << 30)).toFixed(2) + " GB";
+  if (n >= 1 << 20) return (n / (1 << 20)).toFixed(1) + " MB";
+  if (n >= 1 << 10) return Math.round(n / (1 << 10)) + " KB";
+  return n + " B";
+}
+
+function pct(n: number, total: number): string {
+  return total > 0 ? Math.max(0.5, (n / total) * 100) + "%" : "0%";
 }
 
 /* ---------------- 帮助与反馈 ---------------- */
@@ -166,7 +270,7 @@ function HelpPane({ onNotice }: { onNotice?: (level: string, text: string) => vo
       <Section title="问题反馈">
         <p className="text-sm text-slate-600">
           如有问题或建议，请通过邮箱反馈：
-          <span className="text-[#8b5cf6]"> support@openlaver.local</span>
+          <span className="text-[#1a7f37]"> support@openlaver.local</span>
         </p>
         <p className="text-xs text-slate-400 mt-1">请附上操作步骤与截图，以便我们定位问题。</p>
       </Section>

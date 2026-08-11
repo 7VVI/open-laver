@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import appIcon from "./assets/app_icon.png";
 import { api, SessionDto } from "./lib/api";
 import { useTauriEvent, EV } from "./lib/events";
 import ChatView from "./views/ChatView";
@@ -182,11 +183,11 @@ export default function App() {
       onClick={() => (item.id === "chat" ? newSession() : setTab(item.id))}
       className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition ${
         tab === item.id
-          ? "bg-[#f0e9ff] text-[#8b5cf6] font-medium"
+          ? "bg-[#e0e0e0] text-[#333333] font-medium"
           : "text-slate-600 hover:bg-slate-100"
       }`}
     >
-      <span className={tab === item.id ? "text-[#8b5cf6]" : "text-slate-400"}>{item.icon}</span>
+      <span className={tab === item.id ? "text-[#333333]" : "text-slate-400"}>{item.icon}</span>
       {item.label}
     </button>
   );
@@ -221,32 +222,37 @@ export default function App() {
       <div className="flex flex-1 min-h-0">
       {/* 侧边栏 (宽度过渡丝滑折叠) */}
       <aside
-        className={`shrink-0 bg-[#f7f8fa] border-r border-slate-200 overflow-hidden transition-[width] duration-300 ease-in-out ${
+        className={`shrink-0 bg-[#f6f6f6] border-r border-slate-200 overflow-hidden transition-[width] duration-300 ease-in-out ${
           sidebarCollapsed ? "w-0 border-r-0" : "w-60"
         }`}
       >
         <div className="w-60 h-full flex flex-col">
         {/* 品牌 */}
         <div className="px-4 pt-4 pb-3 flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#8b5cf6] flex items-center justify-center text-white font-bold text-sm">
-            L
-          </div>
+          <img
+            src={appIcon}
+            alt="Laver"
+            className="w-7 h-7 rounded-lg object-cover"
+          />
           <span className="font-semibold text-slate-800 text-[15px]">Laver 办公</span>
           <span className="text-[10px] text-slate-400 border border-slate-300 rounded px-1 py-[1px]">
             BETA
           </span>
         </div>
 
-        {/* 导航 */}
-        <nav className="flex-1 px-2 py-2 space-y-0.5 overflow-y-auto">
+        {/* 导航菜单 (固定, 不随最近对话滚动) */}
+        <div className="px-2 py-2 space-y-0.5">
           {NAV_MAIN.map((n) => (
             <NavButton key={n.id} item={n} />
           ))}
+        </div>
 
-          {/* 会话历史 */}
+        {/* 会话历史 (独立滚动区域) */}
+        <div className="flex-1 min-h-0 flex flex-col px-2 pb-2">
           <div className="pt-3 pb-1 px-3 text-[11px] text-slate-400 uppercase tracking-wide">
             最近对话
           </div>
+          <div className="hover-scroll flex-1 min-h-0 overflow-y-auto space-y-0.5">
           {sessions.length === 0 && (
             <div className="px-3 py-1 text-xs text-slate-400">暂无对话</div>
           )}
@@ -285,7 +291,8 @@ export default function App() {
               }}
             />
           ))}
-        </nav>
+          </div>
+        </div>
 
         {/* 底部: 设置 (弹窗，含模型管理) */}
         <div className="border-t border-slate-200 p-2 space-y-0.5">
@@ -295,7 +302,7 @@ export default function App() {
           >
             设置
             <span className="text-slate-400">
-              {icon("M12 15a3 3 0 100-6 3 3 0 000 6|M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-2.82 1.17V21a2 2 0 11-4 0v-.09A1.65 1.65 0 006 19.4l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15H4.5a2 2 0 110-4h.09A1.65 1.65 0 006 9.4")}
+              {icon("M21 4h-7|M10 4H3|M21 12h-9|M8 12H3|M21 20h-5|M12 20H3|M14 2v4|M8 10v4|M16 18v4")}
             </span>
           </button>
         </div>
@@ -405,14 +412,16 @@ function ChatWelcome({ onStart }: { onStart: () => void }) {
   return (
     <div className="h-full flex items-center justify-center">
       <div className="text-center">
-        <div className="w-12 h-12 rounded-2xl bg-[#8b5cf6] mx-auto flex items-center justify-center text-white text-2xl font-bold mb-5">
-          L
-        </div>
+        <img
+          src={appIcon}
+          alt="Laver"
+          className="w-12 h-12 rounded-2xl mx-auto object-cover mb-5"
+        />
         <h1 className="text-2xl font-bold text-slate-800">你好，我是 Laver 办公</h1>
         <p className="text-slate-500 mt-2">有什么需要我帮你搞定的？</p>
         <button
           onClick={onStart}
-          className="mt-6 bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-xl px-6 py-2.5 text-sm font-medium shadow-sm"
+          className="mt-6 bg-[#333333] hover:bg-[#111111] text-white rounded-xl px-6 py-2.5 text-sm font-medium shadow-sm"
         >
           开始新对话
         </button>
@@ -463,7 +472,7 @@ function SessionRow({
     >
       <span className="truncate flex items-center gap-1.5">
         {s.pinned && (
-          <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0 text-[#8b5cf6]" fill="currentColor">
+          <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0 text-[#34c759]" fill="currentColor">
             <path d="M14 4v6l3 3v2H7v-2l3-3V4z" />
           </svg>
         )}
@@ -551,7 +560,7 @@ function RenameDialog({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") onSave(value); if (e.key === "Escape") onClose(); }}
-          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#8b5cf6]"
+          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#34c759]"
         />
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 text-slate-600">取消</button>
@@ -616,7 +625,7 @@ function TopBar(props: {
 
   return (
     <div
-      className="h-10 shrink-0 flex items-center gap-0.5 px-2 border-b border-slate-200 bg-[#f7f8fa] relative"
+      className="h-10 shrink-0 flex items-center gap-0.5 px-2 border-b border-slate-200 bg-[#f6f6f6] relative"
       data-tauri-drag-region
     >
       {/* 汉堡菜单 */}
@@ -681,7 +690,7 @@ function TopBar(props: {
       {/* 窗口控制 */}
       <div className="flex items-center gap-0.5">
         <button
-          className={`${iconBtn} ${props.rightPanelOpen ? "text-[#8b5cf6]" : ""}`}
+          className={`${iconBtn} ${props.rightPanelOpen ? "text-[#34c759]" : ""}`}
           onClick={props.onToggleRightPanel}
           title={props.rightPanelOpen ? "折叠右侧面板" : "展开右侧面板"}
         >
@@ -776,7 +785,7 @@ function InfoDialog({
         <div className="px-5 py-4 border-t border-slate-100 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-lg text-sm bg-[#8b5cf6] hover:bg-[#7c3aed] text-white"
+            className="px-5 py-2 rounded-lg text-sm bg-[#333333] hover:bg-[#111111] text-white"
           >
             知道了
           </button>
@@ -875,7 +884,7 @@ function SearchDialog({
               >
                 <span
                   className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                    s.id === activeId ? "bg-[#8b5cf6]" : "border-2 border-slate-300"
+                    s.id === activeId ? "bg-[#34c759]" : "border-2 border-slate-300"
                   }`}
                 />
                 <span className="flex-1 truncate text-sm text-slate-700">{s.title}</span>

@@ -103,7 +103,7 @@ export default function SkillsView({
               <button
                 onClick={() => setAddMenu((v) => !v)}
                 disabled={importing}
-                className="text-sm bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg px-3 py-1.5 disabled:opacity-50"
+                className="text-sm bg-[#333333] hover:bg-[#111111] text-white rounded-lg px-3 py-1.5 disabled:opacity-50"
               >
                 {importing ? "导入中…" : "+ 添加技能"}
               </button>
@@ -157,7 +157,7 @@ export default function SkillsView({
               <div
                 key={s.name}
                 onClick={() => setViewing(s)}
-                className="bg-white border border-slate-200 rounded-xl p-4 flex items-start justify-between gap-4 shadow-sm cursor-pointer hover:border-[#8b5cf6]/50 hover:shadow transition-all"
+                className="bg-white border border-slate-200 rounded-xl p-4 flex items-start justify-between gap-4 shadow-sm cursor-pointer hover:border-[#34c759]/50 hover:shadow transition-all"
               >
                 <div className="min-w-0">
                   <div className="font-medium text-slate-800">{s.name}</div>
@@ -295,7 +295,7 @@ function SkillDetail({ skill, onClose }: { skill: SkillMeta; onClose: () => void
             <div className="min-w-0">
               <div className="font-semibold text-slate-800 flex items-center gap-2">
                 {skill.name}
-                <span className="text-[11px] px-1.5 py-0.5 rounded font-normal bg-violet-50 text-violet-600">
+                <span className="text-[11px] px-1.5 py-0.5 rounded font-normal bg-green-50 text-green-600">
                   可用
                 </span>
               </div>
@@ -357,7 +357,7 @@ function SkillEditor({
   const [err, setErr] = useState<string | null>(null);
 
   const field =
-    "w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8b5cf6]";
+    "w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#34c759]";
 
   const save = async () => {
     if (!name.trim() || !description.trim()) {
@@ -422,7 +422,7 @@ function SkillEditor({
           <button
             onClick={save}
             disabled={saving}
-            className="px-5 py-2 rounded-lg text-sm bg-[#8b5cf6] hover:bg-[#7c3aed] text-white disabled:opacity-50"
+            className="px-5 py-2 rounded-lg text-sm bg-[#333333] hover:bg-[#111111] text-white disabled:opacity-50"
           >
             {saving ? "保存中…" : "创建"}
           </button>

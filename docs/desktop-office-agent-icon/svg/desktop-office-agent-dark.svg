@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Desktop Office Agent - Dark (primary) -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="75%">
+      <stop offset="0" stop-color="#17171A"/>
+      <stop offset="1" stop-color="#050506"/>
+    </radialGradient>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="232" fill="url(#bg)"/>
+  <rect x="52.5" y="52.5" width="919" height="919" rx="226" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
+  <g transform="rotate(-6 512 512)">
+    <!-- desk -->
+    <rect x="277" y="636" width="470" height="28" rx="14" fill="#F5F5F7"/>
+    <!-- task lines -->
+    <rect x="330" y="706" width="200" height="16" rx="8" fill="#F5F5F7"/>
+    <rect x="330" y="752" width="132" height="16" rx="8" fill="#F5F5F7"/>
+    <rect x="330" y="798" width="160" height="16" rx="8" fill="#F5F5F7" opacity="0.5"/>
+    <!-- agent ring -->
+    <path d="M 627.7 324.8 A 138 138 0 1 0 543.0 265.5"
+          fill="none" stroke="#F5F5F7" stroke-width="36" stroke-linecap="round"/>
+  </g>
+</svg>

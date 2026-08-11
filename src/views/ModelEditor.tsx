@@ -69,7 +69,7 @@ export default function ModelEditor({
     }
   };
 
-  const field = "w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8b5cf6]";
+  const field = "w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#34c759]";
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 fade-in">
@@ -147,7 +147,7 @@ export default function ModelEditor({
                     onClick={() => setP({ ...p, context_window: tier.value })}
                     className={`text-sm rounded-lg py-2 border ${
                       p.context_window === tier.value
-                        ? "border-[#8b5cf6] bg-[#f0e9ff] text-[#8b5cf6]"
+                        ? "border-[#34c759] bg-[#e0e0e0] text-[#333333]"
                         : "border-slate-300 text-slate-600 hover:bg-slate-50"
                     }`}
                   >
@@ -162,7 +162,7 @@ export default function ModelEditor({
                   type="checkbox"
                   checked={p.supports_thinking}
                   onChange={(e) => setP({ ...p, supports_thinking: e.target.checked })}
-                  className="accent-[#8b5cf6] w-4 h-4"
+                  className="accent-[#34c759] w-4 h-4"
                 />
                 <span className="text-sm text-slate-600">可开启推理</span>
               </label>
@@ -192,7 +192,7 @@ export default function ModelEditor({
           <button
             onClick={save}
             disabled={saving}
-            className="px-5 py-2 rounded-lg text-sm bg-[#8b5cf6] hover:bg-[#7c3aed] text-white disabled:opacity-50"
+            className="px-5 py-2 rounded-lg text-sm bg-[#333333] hover:bg-[#111111] text-white disabled:opacity-50"
           >
             {saving ? "保存中…" : "保存"}
           </button>

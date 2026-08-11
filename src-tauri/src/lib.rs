@@ -16,11 +16,39 @@ pub mod team;
 pub mod worktree;
 pub mod workers;
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tauri::Manager;
 
 use state::AppState;
+
+/// 程序数据目录: C:\Users\{user}\.Laver (主流 Agent 的 ~/.xxx 做法)
+fn home_laver_data_dir() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("USERPROFILE") {
+        return Some(PathBuf::from(p).join(".Laver"));
+    }
+    let drive = std::env::var_os("HOMEDRIVE")?;
+    let path = std::env::var_os("HOMEPATH")?;
+    Some(PathBuf::from(drive).join(path).join(".Laver"))
+}
+
+/// 递归复制目录 (首次迁移旧数据目录用, 非破坏性)
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -33,13 +61,19 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            // 数据目录: {app_data}/laver-agent/
-            let data_dir = app
+            // 数据目录: C:\Users\{user}\.Laver (skills/.memory/laver.db 等都在其下)
+            let old_dir = app
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::env::temp_dir())
                 .join("laver-agent");
+            let data_dir = home_laver_data_dir().unwrap_or_else(|| old_dir.clone());
+            // 首次迁移旧数据目录 (旧目录保留, 不删除)
+            if !data_dir.exists() && old_dir.exists() && old_dir != data_dir {
+                let _ = copy_dir_all(&old_dir, &data_dir);
+            }
             std::fs::create_dir_all(&data_dir).ok();
             std::fs::create_dir_all(data_dir.join("skills")).ok();
             // 播种内置办公技能 (首次运行)
@@ -78,6 +112,10 @@ pub fn run() {
             gateway::commands::resolve_approval,
             gateway::commands::get_workspace,
             gateway::commands::set_workspace,
+            gateway::commands::get_permission_mode,
+            gateway::commands::set_permission_mode,
+            gateway::commands::set_default_workspace,
+            gateway::commands::get_storage_info,
             gateway::commands::list_dir_tree,
             gateway::commands::open_path,
             gateway::commands::list_models,

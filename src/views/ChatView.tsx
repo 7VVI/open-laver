@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type MouseEvent as ReactMouseEve
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   api,
   Message,
@@ -16,6 +17,43 @@ import {
 } from "../lib/api";
 import { useTauriEvent, EV } from "../lib/events";
 import agentIcon from "../assets/agent_icon_holo.png";
+import hljs from "highlight.js/lib/core";
+import hljsJavascript from "highlight.js/lib/languages/javascript";
+import hljsTypescript from "highlight.js/lib/languages/typescript";
+import hljsXml from "highlight.js/lib/languages/xml";
+import hljsCss from "highlight.js/lib/languages/css";
+import hljsJson from "highlight.js/lib/languages/json";
+import hljsBash from "highlight.js/lib/languages/bash";
+import hljsPowershell from "highlight.js/lib/languages/powershell";
+import hljsPython from "highlight.js/lib/languages/python";
+import hljsRust from "highlight.js/lib/languages/rust";
+import hljsGo from "highlight.js/lib/languages/go";
+import hljsJava from "highlight.js/lib/languages/java";
+import hljsSql from "highlight.js/lib/languages/sql";
+import hljsYaml from "highlight.js/lib/languages/yaml";
+import hljsMarkdown from "highlight.js/lib/languages/markdown";
+import hljsPlaintext from "highlight.js/lib/languages/plaintext";
+import "highlight.js/styles/github-dark.css";
+
+hljs.registerLanguage("javascript", hljsJavascript);
+hljs.registerLanguage("typescript", hljsTypescript);
+hljs.registerLanguage("xml", hljsXml);
+hljs.registerLanguage("html", hljsXml);
+hljs.registerLanguage("css", hljsCss);
+hljs.registerLanguage("json", hljsJson);
+hljs.registerLanguage("bash", hljsBash);
+hljs.registerLanguage("shell", hljsBash);
+hljs.registerLanguage("sh", hljsBash);
+hljs.registerLanguage("powershell", hljsPowershell);
+hljs.registerLanguage("python", hljsPython);
+hljs.registerLanguage("rust", hljsRust);
+hljs.registerLanguage("go", hljsGo);
+hljs.registerLanguage("java", hljsJava);
+hljs.registerLanguage("sql", hljsSql);
+hljs.registerLanguage("yaml", hljsYaml);
+hljs.registerLanguage("markdown", hljsMarkdown);
+hljs.registerLanguage("plaintext", hljsPlaintext);
+hljs.registerLanguage("text", hljsPlaintext);
 
 interface ToolCall {
   id: string;
@@ -36,6 +74,22 @@ interface UiMsg {
   tools?: ToolCall[];
   streaming?: boolean;
   attachments?: string[];
+}
+
+// 后端把附件路径以 "[附件] ..." 提示块追加在用户消息末尾；加载历史时还原成附件列表并去掉这段文本
+const ATTACH_MARKER = "[附件] 用户提供了以下文件，需要时可用 read_file 读取或用 shell/技能处理：";
+function parseStoredAttachments(text: string): { text: string; paths: string[] } | null {
+  const idx = text.indexOf(ATTACH_MARKER);
+  if (idx < 0) return null;
+  const head = text.slice(0, idx).replace(/\n+$/, "");
+  const paths = text
+    .slice(idx + ATTACH_MARKER.length)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("- "))
+    .map((l) => l.slice(2).trim())
+    .filter(Boolean);
+  return { text: head, paths };
 }
 
 // 工具步骤去重: 相同 id 或相同名称+参数视为重复调用，只保留一行并累计次数
@@ -99,6 +153,36 @@ export default function ChatView({
   const [skills, setSkills] = useState<SkillMeta[]>([]);
   const [workspace, setWorkspace] = useState<string>("");
   const [attachments, setAttachments] = useState<string[]>([]);
+  // 权限模式: default=需要审核, full=完全访问自动放行
+  const [permMode, setPermMode] = useState<string>("default");
+  // 右侧工作目录面板宽度: 可拖拽分界线调整, 宽度记忆在本地
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem("laver.rightPanelWidth"));
+    return saved >= 180 && saved <= 640 ? saved : 256;
+  });
+  const panelDrag = useRef<{ startX: number; startWidth: number } | null>(null);
+  useEffect(() => {
+    localStorage.setItem("laver.rightPanelWidth", String(rightPanelWidth));
+  }, [rightPanelWidth]);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const st = panelDrag.current;
+      if (!st) return;
+      const w = st.startWidth + (st.startX - e.clientX);
+      setRightPanelWidth(Math.min(Math.max(w, 180), 640));
+    };
+    const onUp = () => {
+      panelDrag.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
   // 消息队列: 当前任务运行时发送会排队，结束后自动发下一条
   const [queue, setQueue] = useState<{ text: string; attachments: string[] }[]>([]);
   // 当前任务是否已结束: 复制按钮仅在任务结束后显示
@@ -143,6 +227,7 @@ export default function ChatView({
     refreshModels();
     api.getWorkspace().then((w) => setWorkspace(w.workspace));
     api.listSkills().then(setSkills);
+    api.getPermissionMode().then(setPermMode).catch(() => {});
   }, [modelsRefreshKey]);
 
   useEffect(() => {
@@ -157,6 +242,7 @@ export default function ChatView({
     setRunning(false);
     setTaskDone(true);
     setQueueBoth(() => []);
+    setAttachments([]);
     let alive = true;
     // 切回正在执行的会话时，同步运行态，保证暂停键可用
     api.isSessionRunning(sessionId).then((r) => { if (alive) { setRunning(r); setTaskDone(!r); } }).catch(() => {});
@@ -181,6 +267,19 @@ export default function ChatView({
         if (curText) blocks.push({ kind: "text", text: curText });
         if (curTools) blocks.push({ kind: "tools", tools: curTools });
         const text = blocks.filter((x) => x.kind === "text").map((x) => x.text).join("\n\n");
+        // 还原附件: 去掉后端追加的 "[附件] ..." 文本, 转成附件 chips
+        let userText = text;
+        let attachments: string[] | undefined;
+        if (m.role === "user") {
+          const parsed = parseStoredAttachments(text);
+          if (parsed && parsed.paths.length > 0) {
+            userText = parsed.text;
+            attachments = parsed.paths;
+            for (const blk of blocks) {
+              if (blk.kind === "text") blk.text = parsed.text;
+            }
+          }
+        }
         const tools = blocks.flatMap((x) => (x.kind === "tools" ? x.tools : []));
         const results = m.content.filter((b) => b.type === "tool_result");
         if (results.length) {
@@ -216,7 +315,13 @@ export default function ChatView({
           }
           last.text = last.blocks.filter((x) => x.kind === "text").map((x) => x.text).join("\n\n");
         } else {
-          ui.push({ role: m.role, text, blocks, tools: tools.length ? tools : undefined });
+          ui.push({
+            role: m.role,
+            text: userText,
+            blocks,
+            tools: tools.length ? tools : undefined,
+            attachments,
+          });
         }
       }
       setMessages(ui);
@@ -478,6 +583,11 @@ export default function ChatView({
       onManageModels={onManageModels}
       workspace={workspace}
       showWorkspace={!hasMessages}
+      permMode={permMode}
+      onSetPermMode={async (mode: string) => {
+        setPermMode(mode);
+        await api.setPermissionMode(mode);
+      }}
       onPickWorkspace={async () => {
         const dir = await open({ directory: true, multiple: false });
         if (typeof dir === "string") { await api.setWorkspace(dir); setWorkspace(dir); }
@@ -493,12 +603,24 @@ export default function ChatView({
             <div className="relative flex-1 min-h-0">
               <div ref={scrollRef} className="h-full overflow-y-auto px-6 py-6">
                 <div className="max-w-3xl mx-auto space-y-5">
-                  {messages.map((m, i) => (
-                    <MessageBubble key={i} msg={m} taskDone={taskDone} todos={todos} workspace={workspace} isLast={i === messages.length - 1} />
-                  ))}
+                  {(() => {
+                    // 正在执行时，当前轮从最后一条 user 消息开始，之前的都是历史回复
+                    const lastUserIdx = running
+                      ? messages.map((m) => m.role).lastIndexOf("user")
+                      : -1;
+                    return messages.map((m, i) => (
+                      <MessageBubble
+                        key={i}
+                        msg={m}
+                        todos={todos}
+                        workspace={workspace}
+                        copyable={running ? i < lastUserIdx : i === messages.length - 1}
+                      />
+                    ));
+                  })()}
                   {running && (
                     <div className="flex items-center gap-2 text-sm text-slate-400">
-                      <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#34c759] animate-spin shrink-0" />
                       处理中
                       <span className="flex gap-0.5">
                         {[0, 1, 2].map((i) => (
@@ -549,13 +671,29 @@ export default function ChatView({
       </div>
 
       {showRightPanel && (
-        <aside className="w-64 shrink-0 border-l border-slate-200 p-4 overflow-y-auto bg-[#fafbfc]">
-          {/* 工作目录文件树: 右键可添加到对话上下文或复制路径 */}
-          <FileTree
-            workspace={workspace}
-            onAddAttachment={(p) => setAttachments((prev) => (prev.includes(p) ? prev : [...prev, p]))}
+        <>
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              panelDrag.current = { startX: e.clientX, startWidth: rightPanelWidth };
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+            onDoubleClick={() => setRightPanelWidth(256)}
+            className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-[#34c759]/50 active:bg-[#34c759] transition-colors"
+            title="拖动调整宽度（双击恢复默认）"
           />
-        </aside>
+          <aside
+            style={{ width: rightPanelWidth }}
+            className="shrink-0 border-l border-slate-200 p-4 overflow-auto bg-[#fafbfc]"
+          >
+            {/* 工作目录文件树: 右键可添加到对话上下文或复制路径 */}
+            <FileTree
+              workspace={workspace}
+              onAddAttachment={(p) => setAttachments((prev) => (prev.includes(p) ? prev : [...prev, p]))}
+            />
+          </aside>
+        </>
       )}
     </div>
   );
@@ -586,11 +724,14 @@ function Composer(props: {
   workspace: string;
   showWorkspace: boolean;
   onPickWorkspace: () => void;
+  permMode: string;
+  onSetPermMode: (mode: string) => void;
 }) {
   const [showModels, setShowModels] = useState(false);
   const [editModelId, setEditModelId] = useState<string | null>(null);
   const [showPlus, setShowPlus] = useState(false);
   const [plusSub, setPlusSub] = useState<null | "skills" | "cron">(null);
+  const [showPerm, setShowPerm] = useState(false);
   const closePlus = () => { setShowPlus(false); setPlusSub(null); };
   const editModel = editModelId ? props.models.find((m) => m.id === editModelId) : undefined;
   const wsName = props.workspace ? props.workspace.split(/[\\/]/).pop() : "选择工作目录";
@@ -622,9 +763,9 @@ function Composer(props: {
           {props.queue.map((q, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 bg-[#f6f3ff] border border-[#e0d9fa] rounded-lg px-3 py-1.5 text-sm text-slate-600"
+              className="flex items-center gap-2 bg-[#f0fdfa] border border-[#e0d9fa] rounded-lg px-3 py-1.5 text-sm text-slate-600"
             >
-              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#34c759]" fill="none" stroke="currentColor" strokeWidth="1.8">
                 <path d="M12 8v4l3 2" />
                 <path d="M12 3a9 9 0 100 18 9 9 0 000-18z" />
               </svg>
@@ -694,7 +835,7 @@ function Composer(props: {
             }, 140);
           }}
           placeholder="描述任务，输入 / 调用技能…"
-          rows={1}
+          rows={2}
           className="block w-full resize-none bg-transparent text-[15px] leading-6 text-slate-800 placeholder:text-slate-400 focus:outline-none"
         />
       </div>
@@ -703,7 +844,7 @@ function Composer(props: {
         {/* “+” 添加上下文菜单 */}
         <div className="relative shrink-0">
           <button
-            onClick={() => { setShowPlus(!showPlus); setPlusSub(null); setShowModels(false); }}
+            onClick={() => { setShowPlus(!showPlus); setPlusSub(null); setShowModels(false); setShowPerm(false); }}
             className="w-8 h-8 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-100 flex items-center justify-center"
             title="添加上下文"
           >
@@ -794,10 +935,49 @@ function Composer(props: {
 
         <div className="flex-1" />
 
+        {/* 权限模式选择 (默认权限 / 完全访问) */}
+        <div className="relative shrink-0">
+          <button
+            onClick={() => { setShowPerm((v) => !v); setShowModels(false); setEditModelId(null); setShowPlus(false); setPlusSub(null); }}
+            className="flex items-center gap-1.5 text-sm text-slate-700 hover:bg-slate-100 rounded-full px-3 py-1.5"
+            title="权限模式"
+          >
+            {props.permMode === "full" ? "完全访问" : "默认权限"}
+            <Chevron />
+          </button>
+          {showPerm && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowPerm(false)} />
+              <div className="absolute bottom-full mb-2 right-0 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-20 fade-in py-1.5">
+                <button
+                  onClick={() => { props.onSetPermMode("default"); setShowPerm(false); }}
+                  className="w-full flex items-start gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50"
+                >
+                  <span className={`text-sm w-4 shrink-0 ${props.permMode === "default" ? "text-[#34c759]" : "text-transparent"}`}>✓</span>
+                  <span className="min-w-0">
+                    <span className="block text-sm text-slate-800">默认权限</span>
+                    <span className="block text-xs text-slate-400 mt-0.5">沿用当前安全策略，需要时请求你的批准</span>
+                  </span>
+                </button>
+                <button
+                  onClick={() => { props.onSetPermMode("full"); setShowPerm(false); }}
+                  className="w-full flex items-start gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50"
+                >
+                  <span className={`text-sm w-4 shrink-0 ${props.permMode === "full" ? "text-[#34c759]" : "text-transparent"}`}>✓</span>
+                  <span className="min-w-0">
+                    <span className="block text-sm text-red-500">完全访问权限</span>
+                    <span className="block text-xs text-slate-400 mt-0.5">自动批准权限请求，可能执行高风险操作</span>
+                  </span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
         {/* 模型切换 + 编辑配置 (发送键左侧) */}
         <div className="relative shrink-0">
           <button
-            onClick={() => { setShowModels((v) => !v); setEditModelId(null); setShowPlus(false); setPlusSub(null); }}
+            onClick={() => { setShowModels((v) => !v); setEditModelId(null); setShowPlus(false); setPlusSub(null); setShowPerm(false); }}
             className="flex items-center gap-1.5 text-sm text-slate-700 hover:bg-slate-100 rounded-full px-3 py-1.5"
           >
             {props.active ? props.active.name : "未选择模型"}
@@ -820,7 +1000,7 @@ function Composer(props: {
                     >
                       <button onClick={() => props.onSwitch(m.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
                         {m.active ? (
-                          <span className="text-[#8b5cf6] text-xs w-3 shrink-0">✓</span>
+                          <span className="text-[#34c759] text-xs w-3 shrink-0">✓</span>
                         ) : (
                           <span className="w-3 shrink-0" />
                         )}
@@ -829,7 +1009,7 @@ function Composer(props: {
                       </button>
                       <button
                         onClick={() => setEditModelId(editModelId === m.id ? null : m.id)}
-                        className={`ml-2 shrink-0 flex items-center gap-1 text-xs hover:text-[#8b5cf6] ${editModelId === m.id ? "text-[#8b5cf6]" : "text-slate-400"}`}
+                        className={`ml-2 shrink-0 flex items-center gap-1 text-xs hover:text-[#34c759] ${editModelId === m.id ? "text-[#34c759]" : "text-slate-400"}`}
                         title="配置上下文与思考模式"
                       >
                         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
@@ -859,7 +1039,7 @@ function Composer(props: {
                         className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                       >
                         <span>{tier.label}</span>
-                        {editModel.context_window === tier.value && <span className="text-[#8b5cf6] text-xs">✓</span>}
+                        {editModel.context_window === tier.value && <span className="text-[#34c759] text-xs">✓</span>}
                       </button>
                     ))}
                     <div className="border-t border-slate-100 my-1" />
@@ -867,7 +1047,7 @@ function Composer(props: {
                       <span className="text-[11px] text-slate-400">思考模式</span>
                       <span
                         onClick={() => props.onRuntime(editModel.id, undefined, editModel.thinking === "off" ? "medium" : "off")}
-                        className={`w-9 h-5 rounded-full relative cursor-pointer transition ${editModel.thinking !== "off" ? "bg-[#8b5cf6]" : "bg-slate-300"}`}
+                        className={`w-9 h-5 rounded-full relative cursor-pointer transition ${editModel.thinking !== "off" ? "bg-[#34c759]" : "bg-slate-300"}`}
                       >
                         <span className="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all" style={{ left: editModel.thinking !== "off" ? "18px" : "2px" }} />
                       </span>
@@ -880,7 +1060,7 @@ function Composer(props: {
                           className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                         >
                           <span>{THINKING_LABELS[lv]}</span>
-                          {editModel.thinking === lv && <span className="text-[#8b5cf6] text-xs">✓</span>}
+                          {editModel.thinking === lv && <span className="text-[#34c759] text-xs">✓</span>}
                         </button>
                       ))}
                     {!editModel.supports_thinking && (
@@ -905,7 +1085,7 @@ function Composer(props: {
         ) : (
           <button
             onClick={props.onSend}
-            className="w-9 h-9 rounded-full bg-[#8b5cf6] hover:bg-[#7c3aed] text-white flex items-center justify-center disabled:opacity-40"
+            className="w-9 h-9 rounded-full bg-[#333333] hover:bg-[#111111] text-white flex items-center justify-center disabled:opacity-40"
             disabled={!props.input.trim() && props.attachments.length === 0}
             title={props.running ? "加入队列，任务结束后自动发送" : "发送"}
           >
@@ -973,7 +1153,42 @@ function pathToLinks(text: string, workspace: string): string {
   return changed ? out : text;
 }
 
-function MessageBubble({ msg, taskDone, todos, workspace, isLast }: { msg: UiMsg; taskDone: boolean; todos: TodoItem[]; workspace: string; isLast: boolean }) {
+// 只对代码围栏外的文本做工作区路径链接化，避免破坏 ``` 代码块内容
+function linkifyOutsideCode(text: string, workspace: string): string {
+  const fenceRe = /```[^\n]*\n?[\s\S]*?(?:```|$)/g;
+  let out = "";
+  let last = 0;
+  for (const m of text.matchAll(fenceRe)) {
+    out += pathToLinks(text.slice(last, m.index), workspace);
+    out += m[0];
+    last = m.index + m[0].length;
+  }
+  out += pathToLinks(text.slice(last), workspace);
+  return out;
+}
+
+// 代码块: 深色背景 + 语法高亮 + 语言标签
+function CodeBlock({ language, code }: { language: string; code: string }) {
+  const valid = hljs.getLanguage(language);
+  const html = valid
+    ? hljs.highlight(code, { language, ignoreIllegals: true }).value
+    : hljs.highlightAuto(code).value;
+  return (
+    <div className="my-2 overflow-hidden rounded-lg border border-slate-200 bg-[#0d1117]">
+      <div className="flex items-center justify-between px-3 py-1.5 text-xs text-slate-400 border-b border-white/10 bg-white/5">
+        <span>{language === "plaintext" ? "代码" : language}</span>
+      </div>
+      <pre className="overflow-x-auto p-3 text-[13px] leading-[1.6]">
+        <code
+          className={`hljs language-${language}`}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </pre>
+    </div>
+  );
+}
+
+function MessageBubble({ msg, todos, workspace, copyable }: { msg: UiMsg; todos: TodoItem[]; workspace: string; copyable: boolean }) {
   const [copied, setCopied] = useState<null | "text" | "md">(null);
   const textBlocks = msg.blocks.filter((b) => b.kind === "text").map((b) => b.text);
   const hasText = textBlocks.length > 0;
@@ -1002,7 +1217,7 @@ function MessageBubble({ msg, taskDone, todos, workspace, isLast }: { msg: UiMsg
               {msg.attachments.map((p) => (
                 <span
                   key={p}
-                  className="flex items-center gap-1 bg-[#f0e9ff] text-[#6d28d9] rounded-lg px-2 py-1 text-xs max-w-[220px]"
+                  className="flex items-center gap-1 bg-[#f0f0f0] text-[#333333] rounded-lg px-2 py-1 text-xs max-w-[220px]"
                   title={p}
                 >
                   <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8">
@@ -1034,7 +1249,7 @@ function MessageBubble({ msg, taskDone, todos, workspace, isLast }: { msg: UiMsg
               {i === lastTodoIdx && todos.length > 0 && <TodoPanel todos={todos} />}
             </Fragment>
           ) : (
-            <div key={i} className="text-[13px] text-[#333333] leading-[24px]">
+            <div key={i} className="chat-content text-[13px] text-[#333333] leading-[24px]">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 urlTransform={(url) => url}
@@ -1057,17 +1272,54 @@ function MessageBubble({ msg, taskDone, todos, workspace, isLast }: { msg: UiMsg
                         </a>
                       );
                     }
-                    return <a href={href}>{children}</a>;
+                    // 普通链接: 天蓝色 (与本地文件蓝色区分), 点击用系统浏览器打开, 不在应用内跳转
+                    const external =
+                      href?.startsWith("http://") || href?.startsWith("https://");
+                    return (
+                      <a
+                        href={href}
+                        target={external ? "_blank" : undefined}
+                        rel="noreferrer"
+                        className="text-sky-600 hover:underline cursor-pointer break-all"
+                        onClick={(e) => {
+                          if (!external || !href) return;
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void openUrl(href);
+                        }}
+                      >
+                        {children}
+                      </a>
+                    );
                   },
+                  code: ({ className, children, ...rest }) => {
+                    const match = /language-([\w-]+)/.exec(className || "");
+                    const text = String(children ?? "");
+                    const isBlock = !!match || text.includes("\n");
+                    if (isBlock) {
+                      return (
+                        <CodeBlock
+                          language={match ? match[1].toLowerCase() : "plaintext"}
+                          code={text.replace(/\n$/, "")}
+                        />
+                      );
+                    }
+                    return (
+                      <code className="inline-code" {...rest}>
+                        {children}
+                      </code>
+                    );
+                  },
+                  pre: ({ children }) => <>{children}</>,
                 }}
               >
-                {pathToLinks(b.text, workspace)}
+                {linkifyOutsideCode(b.text, workspace)}
               </ReactMarkdown>
             </div>
           )
         )}
         {/* AI 回复末尾: 复制文本 / 复制 Markdown (任务结束后才显示，淡入避免突兀) */}
-        {isLast && hasText && !msg.streaming && taskDone && (
+        {copyable && hasText && !msg.streaming && (
           <div className="flex items-center gap-1 pt-0.5 fade-in">
             <button
               onClick={() => copy("text")}
@@ -1075,7 +1327,7 @@ function MessageBubble({ msg, taskDone, todos, workspace, isLast }: { msg: UiMsg
               className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
             >
               {copied === "text" ? (
-                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#34c759]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               ) : (
                 <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
               )}
@@ -1086,7 +1338,7 @@ function MessageBubble({ msg, taskDone, todos, workspace, isLast }: { msg: UiMsg
               className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100"
             >
               {copied === "md" ? (
-                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                <svg viewBox="0 0 24 24" className="w-4 h-4 text-[#34c759]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               ) : (
                 <svg viewBox="0 0 16 16" className="w-4 h-4" fill="currentColor"><path d="M14.85 3H1.15C.52 3 0 3.52 0 4.15v7.69C0 12.48.52 13 1.15 13h13.69c.64 0 1.15-.52 1.15-1.15v-7.7C16 3.52 15.48 3 14.85 3zM9 11H7V8L5.5 9.92 4 8v3H2V5h2l1.5 2L7 5h2v6zm2.99.5L9.5 8H11V5h2v3h1.5l-2.51 3.5z" /></svg>
               )}
@@ -1109,7 +1361,7 @@ function TodoPanel({ todos }: { todos: TodoItem[] }) {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1.5 text-slate-500 hover:text-slate-700 py-0.5"
       >
-        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h11M9 12h11M9 18h11" /><path d="M3 6l1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2" /></svg>
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#34c759]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h11M9 12h11M9 18h11" /><path d="M3 6l1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2" /></svg>
         <span className="text-sm">更新待办 {todos.length} 项</span>
         <span className="text-[10px] text-slate-400 ml-auto">{done}/{todos.length} 完成</span>
         <svg viewBox="0 0 24 24" className={`w-3.5 h-3.5 text-slate-400 transition-transform shrink-0 ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
@@ -1120,9 +1372,9 @@ function TodoPanel({ todos }: { todos: TodoItem[] }) {
             <div key={i} className="flex items-start gap-2 text-sm">
               <span className="mt-0.5 shrink-0">
                 {t.status === "in_progress" ? (
-                  <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin" />
+                  <span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#34c759] animate-spin" />
                 ) : t.status === "completed" ? (
-                  <span className="inline-flex w-3.5 h-3.5 rounded-full bg-[#8b5cf6] items-center justify-center">
+                  <span className="inline-flex w-3.5 h-3.5 rounded-full bg-[#34c759] items-center justify-center">
                     <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
                   </span>
                 ) : (
@@ -1134,7 +1386,7 @@ function TodoPanel({ todos }: { todos: TodoItem[] }) {
                   t.status === "completed"
                     ? "text-slate-400 line-through"
                     : t.status === "in_progress"
-                    ? "text-[#8b5cf6] font-medium"
+                    ? "text-[#333333] font-medium"
                     : "text-slate-600"
                 }
               >
@@ -1260,7 +1512,7 @@ function TreeNode({
         {node.is_dir ? (
           <>
             <svg viewBox="0 0 24 24" className={`w-2.5 h-2.5 text-slate-400 transition-transform shrink-0 ${open ? "" : "-rotate-90"}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#8b5cf6]" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 text-[#34c759]" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
           </>
         ) : (
           <>
@@ -1313,7 +1565,7 @@ function toolLabel(t: ToolCall): string {
 
 function ToolStatusIcon({ status }: { status: "running" | "ok" | "err" }) {
   if (status === "running")
-    return <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />;
+    return <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#34c759] animate-spin shrink-0" />;
   if (status === "err")
     return (
       <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
@@ -1335,7 +1587,7 @@ function ToolActivity({ tools }: { tools: ToolCall[] }) {
         className="flex items-center gap-2 text-slate-500 hover:text-slate-700 py-0.5"
       >
         {running ? (
-          <span className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />
+          <span className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-[#34c759] animate-spin shrink-0" />
         ) : (
           <span className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
             <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
@@ -1368,7 +1620,7 @@ function ToolLine({ tool }: { tool: ToolCall }) {
         className={`w-full flex items-center gap-2 py-0.5 pl-1 text-left text-[13px] leading-6 text-slate-600 ${hasDetail ? "hover:text-slate-800 cursor-pointer" : "cursor-default"}`}
       >
         {status === "running" ? (
-          <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#8b5cf6] animate-spin shrink-0" />
+          <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-[#34c759] animate-spin shrink-0" />
         ) : status === "err" ? (
           <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
         ) : (

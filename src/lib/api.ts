@@ -33,6 +33,20 @@ export interface SessionDto {
   pinned: boolean;
 }
 
+export interface StorageItem {
+  label: string;
+  path: string;
+  bytes: number;
+}
+
+export interface StorageInfo {
+  workspace: string;
+  default_workspace: string;
+  data_dir: string;
+  total_bytes: number;
+  items: StorageItem[];
+}
+
 export type ProviderKind = "anthropic" | "openai_compat";
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
@@ -134,6 +148,10 @@ export const api = {
 
   getWorkspace: () => invoke<{ workspace: string }>("get_workspace"),
   setWorkspace: (path: string) => invoke("set_workspace", { path }),
+  setDefaultWorkspace: (path: string) => invoke("set_default_workspace", { path }),
+  getPermissionMode: () => invoke<string>("get_permission_mode"),
+  setPermissionMode: (mode: string) => invoke("set_permission_mode", { mode }),
+  getStorageInfo: () => invoke<StorageInfo>("get_storage_info"),
   listDirTree: (path: string) => invoke<DirEntry[]>("list_dir_tree", { path }),
   openPath: (path: string) => invoke("open_path", { path }),
 

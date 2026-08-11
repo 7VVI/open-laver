@@ -4,8 +4,8 @@ import { useTauriEvent, EV } from "../lib/events";
 
 const COLUMNS = [
   { status: "pending", label: "待处理", color: "text-slate-500" },
-  { status: "in_progress", label: "进行中", color: "text-[#8b5cf6]" },
-  { status: "completed", label: "已完成", color: "text-violet-600" },
+  { status: "in_progress", label: "进行中", color: "text-[#34c759]" },
+  { status: "completed", label: "已完成", color: "text-slate-400" },
 ];
 
 export default function TaskBoard() {
@@ -29,7 +29,7 @@ export default function TaskBoard() {
       ) : (
         <div className="grid grid-cols-3 gap-4">
           {COLUMNS.map((col) => (
-            <div key={col.status} className="bg-[#f7f8fa] border border-slate-200 rounded-xl p-3">
+            <div key={col.status} className="bg-[#f0f0f0] border border-slate-200 rounded-xl p-3">
               <h3 className={`text-xs font-semibold uppercase mb-3 ${col.color}`}>
                 {col.label} ({tasks.filter((t) => t.status === col.status).length})
               </h3>
@@ -44,8 +44,8 @@ export default function TaskBoard() {
                       )}
                       <div className="flex items-center gap-2 mt-2 text-[10px] text-slate-400">
                         <span className="font-mono">{t.id.slice(0, 10)}</span>
-                        {t.owner && <span className="text-[#8b5cf6]">@{t.owner}</span>}
-                        {t.worktree && <span className="text-purple-500">⑂{t.worktree}</span>}
+                        {t.owner && <span className="text-[#666666]">@{t.owner}</span>}
+                        {t.worktree && <span className="text-slate-400">⑂{t.worktree}</span>}
                       </div>
                       {t.blocked_by.length > 0 && (
                         <div className="text-[10px] text-amber-600 mt-1">

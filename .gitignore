@@ -3,6 +3,9 @@ node_modules/
 dist/
 src-tauri/target/
 
+# 开发服务日志
+.dev-logs/
+
 # 运行时数据
 *.db
 *.db-shm
