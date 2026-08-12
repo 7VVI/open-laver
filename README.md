@@ -2,7 +2,7 @@
 
 基于 **Tauri 2 + Rust + React** 的桌面办公 Agent 智能体。
 
-完整实现了 Agent Harness 的各个核心机制（主循环 / 工具 / 权限 / Hooks / 技能 / 压缩 / 记忆 / 任务图 / cron / 团队 / worktree / MCP），并借鉴悟空 Agent 的模块划分（loop_engine / real_tools / memory / cron / skills / mcp / gateway / model_provider / process_manager）。
+完整实现了 Agent Harness 的各个核心机制（主循环 / 工具 / 权限 / Hooks / 技能 / 压缩 / 记忆 / 任务图 / cron / 团队 / worktree / MCP），模块划分：loop_engine / real_tools / memory / cron / skills / mcp / gateway / model_provider / process_manager。
 
 设计哲学：**循环只有一个，机制分层叠加**。
 
@@ -44,7 +44,7 @@ src-tauri/src/
 ├── state.rs                  AppState — 串联所有子系统
 ├── workers.rs                cron 调度器 tick + 队列交付
 ├── seed.rs                   首次运行播种内置办公技能
-├── llm/                      多提供商抽象 (悟空 shared/llm)
+├── llm/                      多提供商抽象 (shared/llm)
 │   ├── provider.rs           trait LlmProvider + 工厂
 │   ├── anthropic.rs          Anthropic Messages (原生 tool_use, SSE)
 │   ├── openai_compat.rs      OpenAI 兼容 (通义/DeepSeek/Kimi, function calling)
@@ -71,7 +71,7 @@ src-tauri/src/
 ├── worktree/                 git worktree 隔离
 ├── mcp/                      stdio JSON-RPC 客户端 + 工具池
 ├── persistence/              SQLite (会话/cron/记忆/设置)
-└── gateway/                  Tauri 命令层 + 事件流 (悟空 agui_stream)
+└── gateway/                  Tauri 命令层 + 事件流 (agui_stream)
 
 src/ (React + TS)
 ├── App.tsx                   侧边栏导航 + 会话管理 + 审批弹窗 + 通知

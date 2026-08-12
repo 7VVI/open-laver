@@ -255,12 +255,12 @@ function HelpPane({ onNotice }: { onNotice?: (level: string, text: string) => vo
 
       <Section title="关于">
         <p className="text-sm text-slate-600">Laver 办公 · 桌面智能体</p>
-        <p className="text-xs text-slate-400 mt-1">版本 v0.1.0</p>
+        <p className="text-xs text-slate-400 mt-1">版本 v1.0.0</p>
         <p className="text-sm text-slate-600 mt-3">
           一个运行在本地的 AI 办公助手，支持多模型、技能、定时任务与团队协作。
         </p>
         <button
-          onClick={() => onNotice?.("info", "当前已是最新版本（v0.1.0）")}
+          onClick={() => onNotice?.("info", "当前已是最新版本（v1.0.0）")}
           className="mt-3 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 text-slate-600"
         >
           检查更新

@@ -1,6 +1,6 @@
 [package]
 name = "laver-agent"
-version = "0.1.0"
+version = "1.0.0"
 description = "Laver Agent - Tauri + Rust 桌面办公 Agent 智能体 (s01-s20)"
 edition = "2021"
 

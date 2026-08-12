@@ -49,7 +49,7 @@ export default function SettingsView() {
 
         <Section title="关于">
           <p className="text-sm text-slate-600">Laver 办公 · 桌面智能体</p>
-          <p className="text-xs text-slate-400 mt-1">版本 0.1.0</p>
+          <p className="text-xs text-slate-400 mt-1">版本 1.0.0</p>
         </Section>
       </div>
     </div>

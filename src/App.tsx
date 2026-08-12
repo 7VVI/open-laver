@@ -189,7 +189,7 @@ export default function App() {
         rightPanelOpen={showRightPanel}
         onToggleRightPanel={() => setShowRightPanel((v) => !v)}
         onCheckUpdate={() =>
-          setInfoDialog({ title: "检查更新", body: "当前已是最新版本（v0.1.0）。" })
+          setInfoDialog({ title: "检查更新", body: "当前已是最新版本（v1.0.0）。" })
         }
         onFeedback={() =>
           setInfoDialog({
@@ -200,7 +200,7 @@ export default function App() {
         onAbout={() =>
           setInfoDialog({
             title: "关于 Laver 办公",
-            body: "Laver 办公 · 桌面智能体\n版本 v0.1.0\n\n一个运行在本地的 AI 办公助手，支持多模型、技能、定时任务与团队协作。",
+            body: "Laver 办公 · 桌面智能体\n版本 v1.0.0\n\n一个运行在本地的 AI 办公助手，支持多模型、技能、定时任务与团队协作。",
           })
         }
       />
