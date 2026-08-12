@@ -70,30 +70,21 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState("system");
   // 右侧面板 (任务进度 + 工作目录文件树) 折叠状态
-  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showRightPanel, setShowRightPanel] = useState(false);
   // 外部注入到对话输入框的草稿 (如: 通过助手创建技能)
   const [chatDraft, setChatDraft] = useState<{ text: string; key: number } | null>(null);
+  // 每次点击「新任务」递增, 用于重新触发主页欢迎动画并重置输入
+  const [welcomeKey, setWelcomeKey] = useState(0);
 
   const refreshSessions = async () => {
     const list = await api.listSessions();
     setSessions(list);
   };
 
-  // 启动即进入对话页: 选中最近会话，若无则自动新建一个
+  // 启动进入主界面: 只加载会话列表, 不自动创建会话 (有输入内容时才创建)
   useEffect(() => {
     (async () => {
-      const list = await api.listSessions();
-      setSessions(list);
-      if (list.length > 0) {
-        setActiveSession(list[0].id);
-      } else {
-        const s = await api.createSession(
-          "新对话 " +
-            new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
-        );
-        setSessions(await api.listSessions());
-        setActiveSession(s.id);
-      }
+      setSessions(await api.listSessions());
     })();
   }, []);
 
@@ -114,22 +105,17 @@ export default function App() {
     );
   });
 
-  const newSession = async () => {
-    // 当前会话还是空的 -> 不重复新建，直接留在这个空对话
-    if (activeSession && !activeHasContent) {
-      setTab("chat");
-      return;
-    }
-    const s = await api.createSession("新对话 " + new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }));
-    await refreshSessions();
-    setActiveSession(s.id);
+  // 新任务: 只回到主界面, 不创建会话; 有输入内容时才创建
+  const newSession = () => {
+    setActiveSession(null);
     setActiveHasContent(false);
+    setWelcomeKey((k) => k + 1);
     setTab("chat");
   };
 
   // 技能页「通过 Laver 助手创建」—> 新建/复用空会话并预填创建技能的草稿
   const createSkillViaChat = async () => {
-    await newSession();
+    newSession();
     let root = "";
     try {
       root = await api.skillsRoot();
@@ -276,13 +262,9 @@ export default function App() {
                 const wasActive = activeSession === s.id;
                 await api.deleteSession(s.id);
                 if (wasActive) {
-                  // 删除当前会话 -> 直接进入一个空的新对话 (而非欢迎页)
-                  const ns = await api.createSession(
-                    "新对话 " +
-                      new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
-                  );
+                  // 删除当前会话 -> 回到主界面, 不自动创建新对话
                   await refreshSessions();
-                  setActiveSession(ns.id);
+                  setActiveSession(null);
                   setActiveHasContent(false);
                   setTab("chat");
                 } else {
@@ -312,20 +294,28 @@ export default function App() {
       {/* 主区 */}
       <main className="flex-1 min-w-0 relative bg-white">
         {tab === "chat" &&
-          (activeSession ? (
-            <ChatView
-              sessionId={activeSession}
-              onAddModel={() => setShowAddModel(true)}
-              onManageModels={() => openSettings("models")}
-              modelsRefreshKey={modelsRefreshKey}
-              onContentChange={setActiveHasContent}
-              onNotice={pushNotice}
-              draft={chatDraft}
-              showRightPanel={showRightPanel}
-            />
-          ) : (
-            <ChatWelcome onStart={newSession} />
-          ))}
+          <ChatView
+            sessionId={activeSession}
+            onAddModel={() => setShowAddModel(true)}
+            onManageModels={() => openSettings("models")}
+            modelsRefreshKey={modelsRefreshKey}
+            onContentChange={setActiveHasContent}
+            onNotice={pushNotice}
+            draft={chatDraft}
+            showRightPanel={showRightPanel}
+            welcomeKey={welcomeKey}
+            onFirstSend={async (text, atts) => {
+              const s = await api.createSession(
+                "新对话 " +
+                  new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+              );
+              await refreshSessions();
+              setActiveSession(s.id);
+              setActiveHasContent(true);
+              await api.sendMessage(s.id, text, atts.length ? atts : undefined);
+              return s.id;
+            }}
+          />}
         {tab === "skills" && (
           <SkillsView onNotice={pushNotice} onCreateViaAssistant={createSkillViaChat} />
         )}
@@ -403,28 +393,6 @@ export default function App() {
             {n.text}
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-function ChatWelcome({ onStart }: { onStart: () => void }) {
-  return (
-    <div className="h-full flex items-center justify-center">
-      <div className="text-center">
-        <img
-          src={appIcon}
-          alt="Laver"
-          className="w-12 h-12 rounded-2xl mx-auto object-cover mb-5"
-        />
-        <h1 className="text-2xl font-bold text-slate-800">你好，我是 Laver 办公</h1>
-        <p className="text-slate-500 mt-2">有什么需要我帮你搞定的？</p>
-        <button
-          onClick={onStart}
-          className="mt-6 bg-[#333333] hover:bg-[#111111] text-white rounded-xl px-6 py-2.5 text-sm font-medium shadow-sm"
-        >
-          开始新对话
-        </button>
       </div>
     </div>
   );

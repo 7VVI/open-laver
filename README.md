@@ -8,6 +8,14 @@
 
 ---
 
+## 界面预览
+
+![首页](docs/imgs/首页.png)
+
+![交互界面](docs/imgs/交互界面.png)
+
+---
+
 ## 快速开始
 
 前置：Rust (stable) 与 Node.js 18+。

@@ -16,7 +16,7 @@ import {
   DirEntry,
 } from "../lib/api";
 import { useTauriEvent, EV } from "../lib/events";
-import agentIcon from "../assets/agent_icon_holo.png";
+import mascot from "../assets/mascot.png";
 import hljs from "highlight.js/lib/core";
 import hljsJavascript from "highlight.js/lib/languages/javascript";
 import hljsTypescript from "highlight.js/lib/languages/typescript";
@@ -135,8 +135,10 @@ export default function ChatView({
   onNotice,
   draft,
   showRightPanel,
+  onFirstSend,
+  welcomeKey,
 }: {
-  sessionId: string;
+  sessionId: string | null;
   onAddModel: () => void;
   onManageModels: () => void;
   modelsRefreshKey: number;
@@ -144,6 +146,8 @@ export default function ChatView({
   onNotice?: (level: string, text: string) => void;
   draft?: { text: string; key: number } | null;
   showRightPanel: boolean;
+  onFirstSend?: (text: string, attachments: string[]) => Promise<string | void>;
+  welcomeKey?: number;
 }) {
   const [messages, setMessages] = useState<UiMsg[]>([]);
   const [input, setInput] = useState("");
@@ -202,6 +206,8 @@ export default function ChatView({
   const inputRef = useRef(input);
   inputRef.current = input;
   const prevSessionRef = useRef(sessionId);
+  // 首次发送创建会话后, 跳过下一次消息历史重载, 保留乐观显示的消息
+  const skipReloadRef = useRef(false);
 
   const active = models.find((m) => m.active);
   const hasMessages = messages.length > 0;
@@ -233,19 +239,25 @@ export default function ChatView({
   useEffect(() => {
     // 每个会话独立的输入草稿: 切走时存旧会话、切入时载入新会话 (没有则空)
     if (prevSessionRef.current !== sessionId) {
-      draftsRef.current[prevSessionRef.current] = inputRef.current;
+      draftsRef.current[prevSessionRef.current ?? ""] = inputRef.current;
     }
-    setInput(draftsRef.current[sessionId] ?? "");
+    setInput(draftsRef.current[sessionId ?? ""] ?? "");
     prevSessionRef.current = sessionId;
-    setMessages([]);
+    const skipReload = skipReloadRef.current;
+    skipReloadRef.current = false;
+    if (!skipReload) {
+      setMessages([]);
+    }
     streamingText.current = "";
     setRunning(false);
     setTaskDone(true);
     setQueueBoth(() => []);
     setAttachments([]);
     let alive = true;
+    if (!sessionId) return () => { alive = false; };
     // 切回正在执行的会话时，同步运行态，保证暂停键可用
     api.isSessionRunning(sessionId).then((r) => { if (alive) { setRunning(r); setTaskDone(!r); } }).catch(() => {});
+    if (skipReload) return () => { alive = false; };
     api.loadMessages(sessionId).then((raw: Message[]) => {
       if (!alive) return;
       const ui: UiMsg[] = [];
@@ -328,7 +340,7 @@ export default function ChatView({
     });
     api.getTodos(sessionId).then((t) => { if (alive) setTodos(t); });
     return () => { alive = false; };
-  }, [sessionId]);
+  }, [sessionId, welcomeKey]);
 
   // 监听滚动位置，记录用户是否停留在底部 (阈值 80px)
   useEffect(() => {
@@ -515,7 +527,19 @@ export default function ChatView({
     streamingText.current = "";
     setRunning(true);
     setTaskDone(false);
-    await api.sendMessage(sessionId, text, atts.length ? atts : undefined);
+    if (sessionId) {
+      await api.sendMessage(sessionId, text, atts.length ? atts : undefined);
+    } else {
+      // 主界面无会话: 先创建会话并发送, 再切换到新会话 (跳过历史重载, 保留乐观消息)
+      skipReloadRef.current = true;
+      try {
+        const newId = await onFirstSend?.(text, atts);
+        if (!newId) skipReloadRef.current = false;
+      } catch (e) {
+        skipReloadRef.current = false;
+        throw e;
+      }
+    }
   };
 
   // 用户点发送/回车: 运行中则入队，否则立即发送
@@ -552,7 +576,12 @@ export default function ChatView({
       return;
     }
     try {
-      await api.createCronJob(sessionId, "", cron, promptText, true);
+      if (sessionId) {
+        await api.createCronJob(sessionId, "", cron, promptText, true);
+      } else {
+        onNotice?.("warn", "请先开始对话再创建定时任务");
+        return;
+      }
       setInput("");
       onNotice?.("info", `已创建定时任务（${label}）`);
     } catch (e: any) {
@@ -565,7 +594,7 @@ export default function ChatView({
       input={input}
       setInput={setInput}
       onSend={send}
-      onCancel={() => api.cancelTurn(sessionId)}
+      onCancel={() => { if (sessionId) void api.cancelTurn(sessionId); }}
       running={running}
       models={models}
       active={active}
@@ -651,18 +680,18 @@ export default function ChatView({
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center px-6">
             <div className="w-full max-w-3xl">
-              <div key={sessionId} className="greeting-enter greeting-hover flex flex-col items-start mb-6">
-                <img
-                  src={agentIcon}
-                  alt="Laver 智能体形象"
-                  className="greeting-avatar w-24 h-24 rounded-2xl object-cover mb-4 select-none"
-                  draggable={false}
-                />
+              <div key={sessionId ?? "welcome-" + (welcomeKey ?? 0)} className="greeting-enter greeting-hover flex items-end justify-between gap-8 mb-6">
                 <h1 className="text-[26px] font-bold text-slate-800 leading-tight text-left">
                   {greeting()}
                   <br />
                   有什么需要我帮你搞定的？
                 </h1>
+                <img
+                  src={mascot}
+                  alt="Laver 智能体形象"
+                  className="greeting-avatar w-40 h-40 object-contain select-none shrink-0"
+                  draggable={false}
+                />
               </div>
             </div>
             <div className="w-full max-w-[800px]">{composer}</div>
@@ -732,8 +761,12 @@ function Composer(props: {
   const [showPlus, setShowPlus] = useState(false);
   const [plusSub, setPlusSub] = useState<null | "skills" | "cron">(null);
   const [showPerm, setShowPerm] = useState(false);
+  const [confirmFull, setConfirmFull] = useState(false);
   const closePlus = () => { setShowPlus(false); setPlusSub(null); };
   const editModel = editModelId ? props.models.find((m) => m.id === editModelId) : undefined;
+  const ctxIdx = editModel
+    ? Math.max(0, CONTEXT_TIERS.findIndex((t) => t.value === editModel.context_window))
+    : 0;
   const wsName = props.workspace ? props.workspace.split(/[\\/]/).pop() : "选择工作目录";
 
   // 输入框随内容自动增高，最多 7 行，超出则内部滚动
@@ -960,7 +993,7 @@ function Composer(props: {
                   </span>
                 </button>
                 <button
-                  onClick={() => { props.onSetPermMode("full"); setShowPerm(false); }}
+                  onClick={() => { setShowPerm(false); setConfirmFull(true); }}
                   className="w-full flex items-start gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50"
                 >
                   <span className={`text-sm w-4 shrink-0 ${props.permMode === "full" ? "text-[#34c759]" : "text-transparent"}`}>✓</span>
@@ -988,7 +1021,7 @@ function Composer(props: {
               <div className="fixed inset-0 z-10" onClick={() => { setShowModels(false); setEditModelId(null); }} />
               <div className="absolute bottom-full mb-2 right-0 w-60 bg-white border border-slate-200 rounded-xl shadow-lg z-20 fade-in">
                 {/* 左: 模型列表 (行右侧“编辑”打开配置) */}
-                <div className="py-1.5 max-h-80 overflow-y-auto">
+                <div className="py-1.5 max-h-[55vh] overflow-y-auto">
                   <div className="px-3 py-1 text-[11px] text-slate-400">切换模型</div>
                   {props.models.length === 0 && (
                     <div className="px-3 py-2 text-sm text-slate-400">暂无模型</div>
@@ -1008,7 +1041,7 @@ function Composer(props: {
                         {!m.has_key && <span className="text-[10px] text-amber-600 shrink-0">无密钥</span>}
                       </button>
                       <button
-                        onClick={() => setEditModelId(editModelId === m.id ? null : m.id)}
+                        onClick={() => { setEditModelId(m.id); setShowModels(false); }}
                         className={`ml-2 shrink-0 flex items-center gap-1 text-xs hover:text-[#34c759] ${editModelId === m.id ? "text-[#34c759]" : "text-slate-400"}`}
                         title="配置上下文与思考模式"
                       >
@@ -1027,47 +1060,6 @@ function Composer(props: {
                     </button>
                   </div>
                 </div>
-                {/* 右: 纵向配置浮层 (点“编辑”后自动出现在列表右侧，不改变列表尺寸/位置) */}
-                {editModel && (
-                  <div className="absolute left-full top-0 ml-2 w-52 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 max-h-80 overflow-y-auto">
-                    <div className="px-3 py-1 text-sm font-medium text-slate-800 truncate">{editModel.name}</div>
-                    <div className="px-3 pt-1.5 pb-0.5 text-[11px] text-slate-400">上下文窗口</div>
-                    {CONTEXT_TIERS.map((tier) => (
-                      <button
-                        key={tier.value}
-                        onClick={() => props.onRuntime(editModel.id, tier.value, undefined)}
-                        className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                      >
-                        <span>{tier.label}</span>
-                        {editModel.context_window === tier.value && <span className="text-[#34c759] text-xs">✓</span>}
-                      </button>
-                    ))}
-                    <div className="border-t border-slate-100 my-1" />
-                    <div className="flex items-center justify-between px-3 py-1.5">
-                      <span className="text-[11px] text-slate-400">思考模式</span>
-                      <span
-                        onClick={() => props.onRuntime(editModel.id, undefined, editModel.thinking === "off" ? "medium" : "off")}
-                        className={`w-9 h-5 rounded-full relative cursor-pointer transition ${editModel.thinking !== "off" ? "bg-[#34c759]" : "bg-slate-300"}`}
-                      >
-                        <span className="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all" style={{ left: editModel.thinking !== "off" ? "18px" : "2px" }} />
-                      </span>
-                    </div>
-                    {editModel.thinking !== "off" &&
-                      (["low", "medium", "high"] as ThinkingLevel[]).map((lv) => (
-                        <button
-                          key={lv}
-                          onClick={() => props.onRuntime(editModel.id, undefined, lv)}
-                          className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                        >
-                          <span>{THINKING_LABELS[lv]}</span>
-                          {editModel.thinking === lv && <span className="text-[#34c759] text-xs">✓</span>}
-                        </button>
-                      ))}
-                    {!editModel.supports_thinking && (
-                      <div className="px-3 pt-1 text-[11px] text-amber-600">该模型未标记支持思考</div>
-                    )}
-                  </div>
-                )}
               </div>
             </>
           )}
@@ -1117,6 +1109,144 @@ function Composer(props: {
             {wsName}
             <Chevron />
           </button>
+        </div>
+      )}
+
+      {/* 启用完全访问权限前的二次确认 */}
+      {confirmFull && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-center justify-center z-[70] fade-in"
+          onClick={() => setConfirmFull(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-[460px] max-w-[92vw] p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="font-semibold text-slate-800">启用完全访问权限？</h2>
+            <p className="text-sm text-slate-600 mt-3 leading-relaxed">
+              启用后，智能体将<strong className="text-slate-800">自动批准所有权限请求</strong>，不再弹窗询问，包括：
+            </p>
+            <ul className="text-sm text-slate-600 mt-2 space-y-1 list-disc pl-5">
+              <li>执行删除、强制推送等危险命令</li>
+              <li>在工作区之外写入或修改文件</li>
+              <li>调用外部 MCP 工具</li>
+            </ul>
+            <p className="text-sm text-red-600 mt-3">可能执行高风险操作，请谨慎确认。</p>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setConfirmFull(false)}
+                className="px-4 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 text-slate-600"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  setConfirmFull(false);
+                  props.onSetPermMode("full");
+                }}
+                className="px-5 py-2 rounded-lg text-sm bg-red-500 hover:bg-red-600 text-white"
+              >
+                确认启用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 模型配置弹窗 (居中显示, 小窗口不遮挡不抖动) */}
+      {editModel && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-center justify-center z-[70] fade-in"
+          onClick={() => setEditModelId(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-[420px] max-w-[92vw] max-h-[85vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-semibold text-slate-800 truncate">{editModel.name}</div>
+                <div className="text-xs text-slate-400 mt-0.5">模型配置</div>
+              </div>
+              <button
+                onClick={() => setEditModelId(null)}
+                className="text-slate-400 hover:text-slate-600 shrink-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div>
+                <div className="text-[11px] text-slate-400 mb-2">上下文窗口</div>
+                <input
+                  type="range"
+                  min={0}
+                  max={CONTEXT_TIERS.length - 1}
+                  step={1}
+                  value={ctxIdx}
+                  onChange={(e) => {
+                    const tier = CONTEXT_TIERS[Number(e.target.value)];
+                    if (tier) props.onRuntime(editModel.id, tier.value, undefined);
+                  }}
+                  className="w-full accent-[#34c759]"
+                />
+                <div className="flex justify-between mt-1.5">
+                  {CONTEXT_TIERS.map((tier, i) => (
+                    <span
+                      key={tier.value}
+                      className={`text-xs ${i === ctxIdx ? "text-[#34c759] font-semibold" : "text-slate-400"}`}
+                    >
+                      {tier.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400">思考模式</span>
+                  <span
+                    onClick={() =>
+                      props.onRuntime(editModel.id, undefined, editModel.thinking === "off" ? "medium" : "off")
+                    }
+                    className={`w-9 h-5 rounded-full relative cursor-pointer transition ${editModel.thinking !== "off" ? "bg-[#34c759]" : "bg-slate-300"}`}
+                  >
+                    <span
+                      className="absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all"
+                      style={{ left: editModel.thinking !== "off" ? "18px" : "2px" }}
+                    />
+                  </span>
+                </div>
+                {editModel.thinking !== "off" && (
+                  <div className="mt-2 space-y-0.5">
+                    {(["low", "medium", "high"] as ThinkingLevel[]).map((lv) => (
+                      <button
+                        key={lv}
+                        onClick={() => props.onRuntime(editModel.id, undefined, lv)}
+                        className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 rounded-lg"
+                      >
+                        <span>{THINKING_LABELS[lv]}</span>
+                        {editModel.thinking === lv && <span className="text-[#34c759] text-xs">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!editModel.supports_thinking && (
+                  <div className="mt-2 text-[11px] text-amber-600">该模型未标记支持思考</div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setEditModelId(null)}
+                className="px-4 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 text-slate-600"
+              >
+                关闭
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
