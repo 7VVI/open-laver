@@ -30,6 +30,7 @@ npm run tauri build         # 打包 Windows 安装包
 首次运行后，进入 **设置** 页：
 1. 选择工作目录（Agent 的文件操作默认限定其内）。
 2. 选择模型提供商预设（通义千问 / DeepSeek / Kimi / Anthropic），填入 API Key，点「测试连接」。
+3. 使用「设计工作室」时，在 **设置 → 设计** 配置图像生成模型（默认通义万相 2.1）。
 
 数据目录：`C:\Users\{user}\.Laver/`（SQLite、skills/、.memory/、.tasks/、.mailboxes/、.task_outputs/、mcpServers.json）。
 
@@ -70,6 +71,7 @@ src-tauri/src/
 ├── team/                     信箱 / 协议 / 队友生命周期
 ├── worktree/                 git worktree 隔离
 ├── mcp/                      stdio JSON-RPC 客户端 + 工具池
+├── design/                   设计工作室 (图标/IP/原型生成 + 作品管理)
 ├── persistence/              SQLite (会话/cron/记忆/设置)
 └── gateway/                  Tauri 命令层 + 事件流 (agui_stream)
 
@@ -106,6 +108,18 @@ src/ (React + TS)
 - **meeting-notes** — 会议纪要与行动项提炼
 
 在「技能」页可启用/禁用；自定义技能只需在 `skills/` 下新建含 `SKILL.md` 的文件夹。
+
+---
+
+## 设计工作室
+
+侧边栏「设计」入口，提供三类 AI 设计能力：
+
+- **图标设计** — 应用/产品图标，可选扁平、渐变、3D、拟物、像素等风格。
+- **IP 形象设计** — 品牌吉祥物/虚拟形象，可选可爱、科技、国潮等风格。
+- **原型设计** — 复用当前对话模型，直接生成可交互的高保真 HTML 原型，应用内实时预览。
+
+图像类生成兼容 OpenAI `images/generations` 接口（默认通义万相 DashScope），API Key 经系统凭据管理器安全存储；作品保存在数据目录 `design/` 下，支持预览、打开与删除。
 
 ---
 

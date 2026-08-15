@@ -4,6 +4,7 @@ pub mod agent;
 pub mod background;
 pub mod constants;
 pub mod cron;
+pub mod design;
 pub mod gateway;
 pub mod llm;
 pub mod mcp;
@@ -145,6 +146,13 @@ pub fn run() {
             gateway::commands::list_mcp_servers,
             gateway::commands::get_mcp_config,
             gateway::commands::save_mcp_config,
+            gateway::commands::generate_design,
+            gateway::commands::read_design,
+            gateway::commands::list_designs,
+            gateway::commands::delete_design,
+            gateway::commands::get_design_config,
+            gateway::commands::save_design_config,
+            gateway::commands::test_design_connection,
         ])
         .run(tauri::generate_context!())
         .expect("运行 Laver Agent 失败");

@@ -14,6 +14,7 @@ use crate::agent::skills::registry::SkillRegistry;
 use crate::agent::tools::registry::ToolRegistry;
 use crate::background::manager::BackgroundManager;
 use crate::cron::scheduler::CronScheduler;
+use crate::design::DesignStore;
 use crate::llm::provider::{make_provider, LlmProvider, ProviderSettings};
 use crate::mcp::pool::McpPool;
 use crate::model_provider::ModelStore;
@@ -36,6 +37,7 @@ pub struct AppState {
     pub default_workspace: RwLock<PathBuf>,
     pub permission_mode: RwLock<PermissionMode>,
     pub models: Arc<ModelStore>,
+    pub design: Arc<DesignStore>,
 
     pub db: Arc<Db>,
     pub sessions: Arc<SessionManager>,
@@ -92,12 +94,14 @@ impl AppState {
         let memory = Arc::new(MemoryService::new(db.clone(), &data_dir));
         let skills = Arc::new(SkillRegistry::new());
         skills.scan(&data_dir.join("skills"));
+        let design = Arc::new(DesignStore::new(db.clone(), &data_dir));
 
         Arc::new(Self {
             workspace: RwLock::new(workspace),
             default_workspace: RwLock::new(default_workspace),
             permission_mode: RwLock::new(permission_mode),
             models,
+            design,
             db,
             sessions: Arc::new(SessionManager::default()),
             approvals: Arc::new(ApprovalBroker::default()),

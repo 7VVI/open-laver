@@ -1984,6 +1984,7 @@ name = "laver-agent"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "croner",
  "fs4",

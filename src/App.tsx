@@ -9,11 +9,13 @@ import SkillsView from "./views/SkillsView";
 import CronView from "./views/CronView";
 import SettingsDialog from "./views/SettingsDialog";
 import ModelEditor from "./views/ModelEditor";
+import DesignView from "./views/DesignView";
 
 type Tab =
   | "chat"
   | "skills"
-  | "cron";
+  | "cron"
+  | "design";
 
 interface NavItem {
   id: Tab;
@@ -34,6 +36,7 @@ const NAV_MAIN: NavItem[] = [
   { id: "chat", label: "新任务", icon: icon("M12 5v14|M5 12h14") },
   { id: "skills", label: "技能", icon: icon("M4 7h16|M4 12h16|M4 17h10") },
   { id: "cron", label: "定时任务", icon: icon("M12 8v4l3 2|M12 3a9 9 0 100 18 9 9 0 000-18z") },
+  { id: "design", label: "设计", icon: icon("M12 19l7-7 3 3-7 7-3-3z|M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z|M2 2l7.586 7.586|M3.5 16.5L13 7") },
 ];
 
 export interface ApprovalReq {
@@ -325,6 +328,9 @@ export default function App() {
             ensureSession={ensureSession}
             onNotice={pushNotice}
           />
+        )}
+        {tab === "design" && (
+          <DesignView onNotice={pushNotice} onOpenSettings={() => openSettings("design")} />
         )}
       </main>
       </div>

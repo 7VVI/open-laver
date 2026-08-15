@@ -128,6 +128,25 @@ export interface McpServerStatus {
   error: string | null;
 }
 
+export type DesignKind = "icon" | "ip" | "prototype";
+
+export interface DesignItem {
+  id: string;
+  kind: DesignKind;
+  prompt: string;
+  created_at: string;
+  path: string;
+  bytes: number;
+  mode: "image" | "vector" | "html";
+  note?: string | null;
+}
+
+export interface DesignConfig {
+  base_url: string;
+  model: string;
+  has_key: boolean;
+}
+
 export const api = {
   createSession: (title: string) => invoke<SessionDto>("create_session", { title }),
   listSessions: () => invoke<SessionDto[]>("list_sessions"),
@@ -207,6 +226,26 @@ export const api = {
   listMcpServers: () => invoke<McpServerStatus[]>("list_mcp_servers"),
   getMcpConfig: () => invoke<any>("get_mcp_config"),
   saveMcpConfig: (config: any) => invoke("save_mcp_config", { config }),
+
+  // 设计工作室
+  generateDesign: (kind: DesignKind, prompt: string, style?: string, size?: string) =>
+    invoke<DesignItem>("generate_design", {
+      kind,
+      prompt,
+      style: style ?? null,
+      size: size ?? null,
+    }),
+  readDesign: (id: string) => invoke<string>("read_design", { id }),
+  listDesigns: () => invoke<DesignItem[]>("list_designs"),
+  deleteDesign: (id: string) => invoke("delete_design", { id }),
+  getDesignConfig: () => invoke<DesignConfig>("get_design_config"),
+  saveDesignConfig: (baseUrl: string, model: string, apiKey?: string) =>
+    invoke("save_design_config", {
+      baseUrl,
+      model,
+      apiKey: apiKey ?? null,
+    }),
+  testDesign: () => invoke<string>("test_design_connection"),
 };
 
 export const THINKING_LABELS: Record<ThinkingLevel, string> = {

@@ -824,3 +824,223 @@ pub async fn save_mcp_config(state: St<'_>, config: serde_json::Value) -> Result
     state.mcp.connect_all().await;
     Ok(())
 }
+
+// ---------------- 设计工作室 ----------------
+
+#[derive(Serialize)]
+pub struct DesignDto {
+    pub id: String,
+    pub kind: String,
+    pub prompt: String,
+    pub created_at: String,
+    pub path: String,
+    pub bytes: u64,
+    /// image | vector | html — 产物生成方式
+    pub mode: String,
+    /// 可选提示 (如回退到对话模型生成)
+    pub note: Option<String>,
+}
+
+impl DesignDto {
+    fn from_meta(m: crate::design::DesignMeta, dir: PathBuf, mode: &str, note: Option<String>) -> Self {
+        let mode = if mode.is_empty() {
+            if m.file.ends_with(".html") {
+                "html"
+            } else if m.file.ends_with(".svg") {
+                "vector"
+            } else {
+                "image"
+            }
+            .to_string()
+        } else {
+            mode.to_string()
+        };
+        Self {
+            id: m.id,
+            kind: m.kind,
+            prompt: m.prompt,
+            created_at: m.created_at,
+            path: dir.join(m.file).display().to_string(),
+            bytes: m.bytes,
+            mode,
+            note,
+        }
+    }
+}
+
+/// 生成设计产物 (kind: icon / ip / prototype)
+#[tauri::command]
+pub async fn generate_design(
+    state: St<'_>,
+    kind: String,
+    prompt: String,
+    style: Option<String>,
+    size: Option<String>,
+) -> Result<DesignDto, String> {
+    let prompt = prompt.trim().to_string();
+    if prompt.is_empty() {
+        return Err("请先输入设计需求".into());
+    }
+    let kind = match kind.as_str() {
+        "icon" | "ip" => kind,
+        "prototype" => kind,
+        _ => return Err("不支持的设计类型".into()),
+    };
+
+    if kind == "prototype" {
+        let (meta, _) = crate::design::generate_prototype(&state, &prompt, style.as_deref())
+            .await?;
+        return Ok(DesignDto::from_meta(
+            meta,
+            state.design.dir(),
+            "html",
+            None,
+        ));
+    }
+
+    let image_prompt = crate::design::image_prompt(&kind, &prompt, style.as_deref());
+    let cfg = state.design.config().await;
+    let has_image_model = state
+        .design
+        .get_key()
+        .map(|k| !k.is_empty())
+        .unwrap_or(false)
+        && !cfg.model.trim().is_empty();
+
+    // 配置了生图模型时优先生成位图；失败自动回退对话模型矢量图
+    if has_image_model {
+        match crate::design::generate_image(&state, &kind, &image_prompt, size.as_deref()).await
+        {
+            Ok((meta, _)) => {
+                return Ok(DesignDto::from_meta(meta, state.design.dir(), "image", None));
+            }
+            Err(e) => {
+                let (meta, _) = crate::design::generate_vector(&state, &kind, &prompt, style.as_deref())
+                    .await?;
+                return Ok(DesignDto::from_meta(
+                    meta,
+                    state.design.dir(),
+                    "vector",
+                    Some(format!("生图模型调用失败（{e}），已自动改用对话模型生成矢量图")),
+                ));
+            }
+        }
+    }
+
+    let (meta, _) = crate::design::generate_vector(&state, &kind, &prompt, style.as_deref()).await?;
+    Ok(DesignDto::from_meta(
+        meta,
+        state.design.dir(),
+        "vector",
+        Some("未配置生图模型，已使用当前对话模型生成矢量图（任意模型均可）".into()),
+    ))
+}
+
+/// 读取设计产物内容，返回 data URL (图片为 png，原型为 html)
+#[tauri::command]
+pub async fn read_design(state: St<'_>, id: String) -> Result<String, String> {
+    let meta = state
+        .design
+        .get(&id)
+        .ok_or_else(|| "设计产物不存在或已被删除".to_string())?;
+    let data = state
+        .design
+        .read_file(&meta)
+        .ok_or_else(|| "读取设计产物失败".to_string())?;
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
+    let mime = if meta.file.ends_with(".html") {
+        "text/html"
+    } else if meta.file.ends_with(".svg") {
+        "image/svg+xml"
+    } else {
+        "image/png"
+    };
+    Ok(format!("data:{mime};base64,{b64}"))
+}
+
+#[tauri::command]
+pub async fn list_designs(state: St<'_>) -> Result<Vec<DesignDto>, String> {
+    let dir = state.design.dir();
+    Ok(state
+        .design
+        .list()
+        .into_iter()
+        .map(|m| DesignDto::from_meta(m, dir.clone(), "", None))
+        .collect())
+}
+
+#[tauri::command]
+pub async fn delete_design(state: St<'_>, id: String) -> Result<(), String> {
+    state.design.delete(&id)
+}
+
+#[derive(Serialize)]
+pub struct DesignConfigDto {
+    pub base_url: String,
+    pub model: String,
+    pub has_key: bool,
+}
+
+#[tauri::command]
+pub async fn get_design_config(state: St<'_>) -> Result<DesignConfigDto, String> {
+    let cfg = state.design.config().await;
+    Ok(DesignConfigDto {
+        base_url: cfg.base_url,
+        model: cfg.model,
+        has_key: state
+            .design
+            .get_key()
+            .map(|k| !k.is_empty())
+            .unwrap_or(false),
+    })
+}
+
+#[tauri::command]
+pub async fn save_design_config(
+    state: St<'_>,
+    base_url: String,
+    model: String,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    let base_url = base_url.trim().to_string();
+    let model = model.trim().to_string();
+    if base_url.is_empty() || model.is_empty() {
+        return Err("接口地址与模型名称不能为空".into());
+    }
+    state
+        .design
+        .save_config(crate::design::DesignConfig {
+            base_url,
+            model,
+        })
+        .await?;
+    if let Some(key) = api_key {
+        state.design.set_key(&key)?;
+    }
+    Ok(())
+}
+
+/// 测试图像模型连通性 (请求 /models 列表)
+#[tauri::command]
+pub async fn test_design_connection(state: St<'_>) -> Result<String, String> {
+    let cfg = state.design.config().await;
+    let api_key = state
+        .design
+        .get_key()
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| "未配置图像生成 API Key".to_string())?;
+    let base = cfg.base_url.trim_end_matches('/');
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{base}/models"))
+        .bearer_auth(&api_key)
+        .send()
+        .await
+        .map_err(|e| format!("连接失败: {e}"))?;
+    let status = resp.status().as_u16();
+    if status >= 400 {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("接口返回 {status}: {}", crate::design::truncate(&text, 200)));
+    }
+    Ok("连接成功，图像模型可用".into())
+}
